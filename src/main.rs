@@ -214,6 +214,12 @@ struct Bag {
     mod_ndx: u16,
 }
 
+#[derive(BinRead, Debug)]
+struct Version {
+    major: u16,
+    minor: u16,
+}
+
 // #         Name         Unit         Abs         Zero Min         Min         Useful Max        Max        Useful De-fault Def Value
 // 0 startAddrsOffset, +, smpls, 0, 0, None, *, *, 0, None
 // 1 endAddrsOffset, +, smpls, 0              *              *              0              None              0              None
@@ -268,6 +274,16 @@ struct Bag {
 const RIFF: [u8; 4] = [b'R', b'I', b'F', b'F'];
 const LIST: [u8; 4] = [b'L', b'I', b'S', b'T'];
 const INAM: [u8; 4] = [b'I', b'N', b'A', b'M'];
+const ICOP: [u8; 4] = [b'I', b'C', b'O', b'P'];
+const ICRD: [u8; 4] = [b'I', b'C', b'R', b'D'];
+const IPRD: [u8; 4] = [b'I', b'P', b'R', b'D'];
+const ISFT: [u8; 4] = [b'I', b'S', b'F', b'T'];
+const ICMT: [u8; 4] = [b'I', b'C', b'M', b'T'];
+const IENG: [u8; 4] = [b'I', b'E', b'N', b'G'];
+const ISNG: [u8; 4] = [b'i', b's', b'n', b'g'];
+const IROM: [u8; 4] = [b'i', b'r', b'o', b'm'];
+const IVER: [u8; 4] = [b'i', b'v', b'e', b'r'];
+const IFIL: [u8; 4] = [b'i', b'f', b'i', b'l'];
 const SDTA: [u8; 4] = [b's', b'd', b't', b'a'];
 const SHDR: [u8; 4] = [b's', b'h', b'd', b'r'];
 const SMPL: [u8; 4] = [b's', b'm', b'p', b'l'];
@@ -304,7 +320,20 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut File) {
                         todo.push_back((child, indent + 1));
                     }
                 }
-                INAM => {
+                IFIL | IVER => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(version) = reader.read_ne::<Version>() {
+                        println!(
+                            "{chr:>indent$}Version: {}.{}",
+                            version.major,
+                            version.minor,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    }
+                }
+                INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
                     let data = c.read_contents(file).unwrap();
                     let name = String::from_utf8(data).unwrap();
                     println!(
