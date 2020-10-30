@@ -263,11 +263,26 @@ fn parse_modulator(v: u16) -> Modulator {
     }
 }
 
+#[derive(Debug)]
+enum DestOper {
+    Link(u16),
+    Generator(GeneratorType),
+}
+
+fn parse_dest_oper(v: u16) -> DestOper {
+    if (v & 0x8000) == 0x8000 {
+	DestOper::Link(v & 0x7ff)
+    } else {
+	DestOper::Generator(parse_generator(v))
+    }
+}
+
 #[derive(BinRead, Debug)]
 struct ModList {
     #[br(map = |x: u16| parse_modulator(x))]
     src_oper: Modulator,
-    dest_oper: u16,
+    #[br(map = |x: u16| parse_dest_oper(x))]
+    dest_oper: DestOper,
     amount: i16,
     #[br(map = |x: u16| parse_modulator(x))]
     amt_src_oper: Modulator,
@@ -363,11 +378,24 @@ const PMOD: [u8; 4] = [b'p', b'm', b'o', b'd'];
 const IBAG: [u8; 4] = [b'i', b'b', b'a', b'g'];
 const PBAG: [u8; 4] = [b'p', b'b', b'a', b'g'];
 
-fn parse_soundfont(chunk: riff::Chunk, file: &mut File) {
+struct SoundFont {
+    samples: Vec<Sample>,
+    sample_data: Vec<u8>,
+    presets: Vec<Preset>,
+    instruments: Vec<Instrument>,
+    igens: Vec<Generator>,
+    pgens: Vec<Generator>,
+    imods: Vec<ModList>,
+    pmods: Vec<ModList>,
+    ibags: Vec<Bag>,
+    pbags: Vec<Bag>,
+}
+
+fn parse_soundfont(chunk: riff::Chunk, file: &mut File) -> SoundFont {
     let mut todo = VecDeque::new();
     todo.push_back((chunk, 1));
     let mut samples = vec![];
-    let mut _sample_data = vec![];
+    let mut sample_data = vec![];
     let mut presets = vec![];
     let mut instruments = vec![];
     let mut igens = vec![];
@@ -416,7 +444,7 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut File) {
                         );
                     }
                     SMPL => {
-                        _sample_data = c.read_contents(file).unwrap();
+                        sample_data = c.read_contents(file).unwrap();
                         debug!(
                             "{chr:>indent$}Samples: {}",
                             c.len() / 2,
@@ -564,91 +592,111 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut File) {
         }
     }
 
-    info!("Presets:");
-    for ix in 0..presets.len() - 1 {
-        let is_last = ix == presets.len() - 1;
-        let preset = &presets[ix];
-        info!("  Name: {}", preset.name);
-        info!("  Pos: {}", preset.preset);
-        info!("  Bank: {}", preset.bank);
-        let bag_start = preset.bag_index as usize;
-        let bag_end = if is_last {
-            pbags.len()
-        } else {
-            let next_preset = &presets[ix + 1];
-            next_preset.bag_index as usize
-        };
-	let mut zone = 0;
-        for bag_ix in bag_start..bag_end {
-            info!("  Zone {}:", zone);
-	    zone = zone + 1;
-            let is_last = ix == pbags.len() - 1;
-            let bag = &pbags[bag_ix];
-            let gen_start = bag.gen_ndx as usize;
-            let gen_end = if is_last {
-                pgens.len()
-            } else {
-		let next_bag = &pbags[bag_ix + 1];
-                next_bag.gen_ndx as usize
-            };
-            info!("    Generators:");
-            for gen_ix in gen_start..gen_end {
-                info!("      {:?}", pgens[gen_ix]);
-            }
-            let mod_start = bag.mod_ndx as usize;
-            let mod_end = if is_last {
-                pmods.len()
-            } else {
-		let next_bag = &pbags[bag_ix + 1];
-                next_bag.mod_ndx as usize
-            };
-            info!("    Modulators:");
-            for mod_ix in mod_start..mod_end {
-                info!("      {:?}", pmods[mod_ix]);
-            }
-        }
-	info!("");
+    SoundFont {
+	samples, sample_data, presets, instruments, igens, pgens, imods, pmods, ibags, pbags
     }
-    info!("Instruments:");
-    for ix in 0..instruments.len() - 1 {
-        let is_last = ix == instruments.len() - 1;
-        let instrument = &instruments[ix];
-        info!("  Name: {}", instrument.name);
+}
+
+impl SoundFont {
+    fn dump(&self) {
+	info!("Presets:");
+	for ix in 0..self.presets.len() - 1 {
+            let is_last = ix == self.presets.len() - 1;
+            let preset = &self.presets[ix];
+            info!("  Name: {}", preset.name);
+            info!("  Pos: {}", preset.preset);
+            info!("  Bank: {}", preset.bank);
+            let bag_start = preset.bag_index as usize;
+            let bag_end = if is_last {
+		self.pbags.len()
+            } else {
+		let next_preset = &self.presets[ix + 1];
+		next_preset.bag_index as usize
+            };
+	    let mut zone = 0;
+            for bag_ix in bag_start..bag_end {
+		info!("  Preset zone {}:", zone);
+		zone = zone + 1;
+		let is_last = ix == self.pbags.len() - 1;
+		let bag = &self.pbags[bag_ix];
+		let gen_start = bag.gen_ndx as usize;
+		let gen_end = if is_last {
+                    self.pgens.len()
+		} else {
+		    let next_bag = &self.pbags[bag_ix + 1];
+                    next_bag.gen_ndx as usize
+		};
+		info!("    Generators:");
+		for gen_ix in gen_start..gen_end {
+		    let gen = &self.pgens[gen_ix];
+		    if gen.oper == GeneratorType::Instrument {
+			self.dump_instrument(gen.amount as usize);
+		    } else {
+			info!("      {:?}", gen);
+		    }
+		}
+		let mod_start = bag.mod_ndx as usize;
+		let mod_end = if is_last {
+                    self.pmods.len()
+		} else {
+		    let next_bag = &self.pbags[bag_ix + 1];
+                    next_bag.mod_ndx as usize
+		};
+		info!("    Modulators:");
+		for mod_ix in mod_start..mod_end {
+                    info!("      {:?}", self.pmods[mod_ix]);
+		}
+            }
+	    info!("");
+	}
+	info!("Instruments:");
+	for ix in 0..self.instruments.len() - 1 {
+	}
+    }
+
+    fn dump_instrument(&self, ix: usize) {
+        let is_last = ix == self.instruments.len() - 1;
+        let instrument = &self.instruments[ix];
+        info!("      Instrument: {}", instrument.name);
         let bag_start = instrument.bag_index as usize;
         let bag_end = if is_last {
-            ibags.len()
+	    self.ibags.len()
         } else {
-            let next_instrument = &instruments[ix + 1];
-            next_instrument.bag_index as usize
+	    let next_instrument = &self.instruments[ix + 1];
+	    next_instrument.bag_index as usize
         };
 	let mut zone = 0;
         for bag_ix in bag_start..bag_end {
-            info!("  Zone {}:", zone);
+	    info!("        Instrument zone {}:", zone);
 	    zone = zone + 1;
-            let is_last = ix == ibags.len() - 1;
-            let bag = &ibags[bag_ix];
-            let gen_start = bag.gen_ndx as usize;
-            let gen_end = if is_last {
-                igens.len()
-            } else {
-		let next_bag = &ibags[bag_ix + 1];
+	    let is_last = ix == self.ibags.len() - 1;
+	    let bag = &self.ibags[bag_ix];
+	    let gen_start = bag.gen_ndx as usize;
+	    let gen_end = if is_last {
+                self.igens.len()
+	    } else {
+		let next_bag = &self.ibags[bag_ix + 1];
                 next_bag.gen_ndx as usize
-            };
-            info!("    Generators:");
-            for gen_ix in gen_start..gen_end {
-                info!("      {:?}", igens[gen_ix]);
-            }
-            let mod_start = bag.mod_ndx as usize;
-            let mod_end = if is_last {
-                imods.len()
-            } else {
-		let next_bag = &ibags[bag_ix + 1];
+	    };
+	    info!("          Generators:");
+	    for gen_ix in gen_start..gen_end {
+		let gen = &self.igens[gen_ix];
+                info!("            {:?}", gen);
+		if gen.oper == GeneratorType::SampleID {
+		    info!("              {:?}", self.samples[gen.amount as usize]);
+		}
+	    }
+	    let mod_start = bag.mod_ndx as usize;
+	    let mod_end = if is_last {
+                self.imods.len()
+	    } else {
+		let next_bag = &self.ibags[bag_ix + 1];
                 next_bag.mod_ndx as usize
-            };
-            info!("    Modulators:");
-            for mod_ix in mod_start..mod_end {
-                info!("      {:?}", imods[mod_ix]);
-            }
+	    };
+	    info!("          Modulators:");
+	    for mod_ix in mod_start..mod_end {
+                info!("             {:?}", self.imods[mod_ix]);
+	    }
         }
 	info!("");
     }
@@ -663,5 +711,6 @@ fn main() {
     let mut file = File::open(Path::new(filename)).unwrap();
 
     let chunk = riff::Chunk::read(&mut file, 0).unwrap();
-    parse_soundfont(chunk, &mut file);
+    let sf = parse_soundfont(chunk, &mut file);
+    sf.dump();
 }
