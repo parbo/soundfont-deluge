@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 binread = "1.1.1"
 riff = "1.0.1"
+log = "0.4.11"
+env_logger = "0.8.1"

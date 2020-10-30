@@ -1,4 +1,5 @@
 use binread::*;
+use log::{debug, info, error};
 use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
@@ -47,63 +48,129 @@ struct Instrument {
     bag_index: u16,
 }
 
-#[derive(BinRead, Debug, PartialEq, Eq)]
-#[repr(u16)]
+#[derive(Debug, PartialEq, Eq)]
 enum GeneratorType {
-    StartAddrsOffset = 0,
-    EndAddrsOffset = 1,
-    StartloopAddrsOffset = 2,
-    EndloopAddrsOffset = 3,
-    StartAddrsCoarseOffset = 4,
-    ModLfoToPitch = 5,
-    VibLfoToPitch = 6,
-    ModEnvToPitch = 7,
-    InitialFilterFc = 8,
-    InitialFilterQ = 9,
-    ModLfoToFilterFc = 10,
-    ModEnvToFilterFc = 11,
-    EndAddrsCoarseOffset = 12,
-    ModLfoToVolume = 13,
-    ChorusEffectsSend = 15,
-    ReverbEffectsSend = 16,
-    Pan = 17,
-    DelayModLFO = 21,
-    FreqModLFO = 22,
-    DelayVibLFO = 23,
-    FreqVibLFO = 24,
-    DelayModEnv = 25,
-    AttackModEnv = 26,
-    HoldModEnv = 27,
-    DecayModEnv = 28,
-    SustainModEnv = 29,
-    ReleaseModEnv = 30,
-    KeynumToModEnvHold = 31,
-    KeynumToModEnvDecay = 32,
-    DelayVolEnv = 33,
-    AttackVolEnv = 34,
-    HoldVolEnv = 35,
-    DecayVolEnv = 36,
-    ReleaseVolEnv = 38,
-    KeynumToVolEnvHold = 39,
-    KeynumToVolEnvDecay = 40,
-    Instrument = 41,
-    KeyRange = 43,
-    VelRange = 44,
-    StartloopAddrsCoarseOffset = 45,
-    Keynum = 46,
-    Velocity = 47,
-    InitialAttenuation = 48,
-    EndloopAddrsCoarseOffset = 50,
-    CoarseTune = 51,
-    SampleModes = 54,
-    ScaleTuning = 56,
-    ExclusiveClass = 57,
-    OverridingRootKey = 58,
+    StartAddrsOffset,
+    EndAddrsOffset,
+    StartloopAddrsOffset,
+    EndloopAddrsOffset,
+    StartAddrsCoarseOffset,
+    ModLfoToPitch,
+    VibLfoToPitch,
+    ModEnvToPitch,
+    InitialFilterFc,
+    InitialFilterQ,
+    ModLfoToFilterFc,
+    ModEnvToFilterFc,
+    EndAddrsCoarseOffset,
+    ModLfoToVolume,
+    ChorusEffectsSend,
+    ReverbEffectsSend,
+    Pan,
+    DelayModLFO,
+    FreqModLFO,
+    DelayVibLFO,
+    FreqVibLFO,
+    DelayModEnv,
+    AttackModEnv,
+    HoldModEnv,
+    DecayModEnv,
+    SustainModEnv,
+    ReleaseModEnv,
+    KeynumToModEnvHold,
+    KeynumToModEnvDecay,
+    DelayVolEnv,
+    SustainVolEnv,
+    AttackVolEnv,
+    HoldVolEnv,
+    DecayVolEnv,
+    ReleaseVolEnv,
+    KeynumToVolEnvHold,
+    KeynumToVolEnvDecay,
+    Instrument,
+    KeyRange,
+    VelRange,
+    StartloopAddrsCoarseOffset,
+    Keynum,
+    Velocity,
+    InitialAttenuation,
+    EndloopAddrsCoarseOffset,
+    CoarseTune,
+    FineTune,
+    SampleID,
+    SampleModes,
+    ScaleTuning,
+    ExclusiveClass,
+    OverridingRootKey,
+    EndOper,
+    Unused,
+}
+
+fn parse_generator(v: u16) -> GeneratorType {
+    match v {
+        0 => GeneratorType::StartAddrsOffset,
+        1 => GeneratorType::EndAddrsOffset,
+        2 => GeneratorType::StartloopAddrsOffset,
+        3 => GeneratorType::EndloopAddrsOffset,
+        4 => GeneratorType::StartAddrsCoarseOffset,
+        5 => GeneratorType::ModLfoToPitch,
+        6 => GeneratorType::VibLfoToPitch,
+        7 => GeneratorType::ModEnvToPitch,
+        8 => GeneratorType::InitialFilterFc,
+        9 => GeneratorType::InitialFilterQ,
+        10 => GeneratorType::ModLfoToFilterFc,
+        11 => GeneratorType::ModEnvToFilterFc,
+        12 => GeneratorType::EndAddrsCoarseOffset,
+        13 => GeneratorType::ModLfoToVolume,
+        15 => GeneratorType::ChorusEffectsSend,
+        16 => GeneratorType::ReverbEffectsSend,
+        17 => GeneratorType::Pan,
+        21 => GeneratorType::DelayModLFO,
+        22 => GeneratorType::FreqModLFO,
+        23 => GeneratorType::DelayVibLFO,
+        24 => GeneratorType::FreqVibLFO,
+        25 => GeneratorType::DelayModEnv,
+        26 => GeneratorType::AttackModEnv,
+        27 => GeneratorType::HoldModEnv,
+        28 => GeneratorType::DecayModEnv,
+        29 => GeneratorType::SustainModEnv,
+        30 => GeneratorType::ReleaseModEnv,
+        31 => GeneratorType::KeynumToModEnvHold,
+        32 => GeneratorType::KeynumToModEnvDecay,
+        33 => GeneratorType::DelayVolEnv,
+        34 => GeneratorType::AttackVolEnv,
+        35 => GeneratorType::HoldVolEnv,
+        36 => GeneratorType::DecayVolEnv,
+	37 => GeneratorType::SustainVolEnv,
+        38 => GeneratorType::ReleaseVolEnv,
+        39 => GeneratorType::KeynumToVolEnvHold,
+        40 => GeneratorType::KeynumToVolEnvDecay,
+        41 => GeneratorType::Instrument,
+        43 => GeneratorType::KeyRange,
+        44 => GeneratorType::VelRange,
+        45 => GeneratorType::StartloopAddrsCoarseOffset,
+        46 => GeneratorType::Keynum,
+        47 => GeneratorType::Velocity,
+        48 => GeneratorType::InitialAttenuation,
+        49 => GeneratorType::EndloopAddrsCoarseOffset,
+        51 => GeneratorType::CoarseTune,
+	52 => GeneratorType::FineTune,
+        53 => GeneratorType::SampleID,
+        54 => GeneratorType::SampleModes,
+        56 => GeneratorType::ScaleTuning,
+        57 => GeneratorType::ExclusiveClass,
+        58 => GeneratorType::OverridingRootKey,
+	60 => GeneratorType::EndOper,
+        _x => {
+	    error!("Ununsed generator: {}", _x);
+	    GeneratorType::Unused
+	}
+    }
 }
 
 #[derive(BinRead, Debug)]
 struct Generator {
-    #[br(pad_size_to = 2)]
+    #[br(map = |x: u16| parse_generator(x))]
     oper: GeneratorType,
     amount: u16,
 }
@@ -305,191 +372,291 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut File) {
     let mut instruments = vec![];
     let mut igens = vec![];
     let mut pgens = vec![];
+    let mut imods = vec![];
+    let mut pmods = vec![];
+    let mut ibags = vec![];
+    let mut pbags = vec![];
     loop {
-        if let Some((c, indent)) = todo.pop_back() {
-            println!(
-                "{chr:>indent$}Child: id: {}, len: {}",
-                c.id(),
-                c.len(),
-                indent = 2 * indent,
-                chr = ' '
-            );
-            match c.id().value {
-                RIFF | LIST | SDTA => {
-                    for child in c.iter(file) {
-                        todo.push_back((child, indent + 1));
+        match todo.pop_back() {
+            Some((c, indent)) => {
+                debug!(
+                    "{chr:>indent$}Child: id: {}, len: {}",
+                    c.id(),
+                    c.len(),
+                    indent = 2 * indent,
+                    chr = ' '
+                );
+                match c.id().value {
+                    RIFF | LIST | SDTA => {
+                        for child in c.iter(file) {
+                            todo.push_back((child, indent + 1));
+                        }
                     }
-                }
-                IFIL | IVER => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    if let Ok(version) = reader.read_ne::<Version>() {
-                        println!(
-                            "{chr:>indent$}Version: {}.{}",
-                            version.major,
-                            version.minor,
+                    IFIL | IVER => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        if let Ok(version) = reader.read_ne::<Version>() {
+                            debug!(
+                                "{chr:>indent$}Version: {}.{}",
+                                version.major,
+                                version.minor,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                        }
+                    }
+                    INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
+                        let data = c.read_contents(file).unwrap();
+                        let name = String::from_utf8(data).unwrap();
+                        debug!(
+                            "{chr:>indent$}Name: {}",
+                            name,
                             indent = 2 * (indent + 1),
                             chr = ' '
                         );
                     }
-                }
-                INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
-                    let data = c.read_contents(file).unwrap();
-                    let name = String::from_utf8(data).unwrap();
-                    println!(
-                        "{chr:>indent$}Name: {}",
-                        name,
-                        indent = 2 * (indent + 1),
-                        chr = ' '
-                    );
-                }
-                SMPL => {
-                    _sample_data = c.read_contents(file).unwrap();
-                    println!(
-                        "{chr:>indent$}Samples: {}",
-                        c.len() / 2,
-                        indent = 2 * (indent + 1),
-                        chr = ' '
-                    );
-                }
-                SHDR => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(sample) = reader.read_ne::<Sample>() {
-                        if !sample.name.starts_with("EOS") {
-                            println!(
-                                "{chr:>indent$}Sample: {}",
-                                sample.name,
-                                indent = 2 * (indent + 1),
-                                chr = ' '
-                            );
+                    SMPL => {
+                        _sample_data = c.read_contents(file).unwrap();
+                        debug!(
+                            "{chr:>indent$}Samples: {}",
+                            c.len() / 2,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    }
+                    SHDR => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(sample) = reader.read_ne::<Sample>() {
+                            if !sample.name.starts_with("EOS") {
+                                debug!(
+                                    "{chr:>indent$}Sample: {}",
+                                    sample.name,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            }
                             samples.push(sample);
                         }
                     }
-                }
-                PHDR => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(preset) = reader.read_ne::<Preset>() {
-                        if !preset.name.starts_with("EOP") {
-                            println!(
-                                "{chr:>indent$}Preset: {}",
-                                preset.name,
-                                indent = 2 * (indent + 1),
-                                chr = ' '
-                            );
+                    PHDR => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(preset) = reader.read_ne::<Preset>() {
+                            if !preset.name.starts_with("EOP") {
+                                debug!(
+                                    "{chr:>indent$}Preset: {}",
+                                    preset.name,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            }
                             presets.push(preset);
                         }
                     }
-                }
-                INST => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(instrument) = reader.read_ne::<Instrument>() {
-                        if !instrument.name.starts_with("EOI") {
-                            println!(
-                                "{chr:>indent$}Instrument: {}",
-                                instrument.name,
-                                indent = 2 * (indent + 1),
-                                chr = ' '
-                            );
+                    INST => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(instrument) = reader.read_ne::<Instrument>() {
+                            if !instrument.name.starts_with("EOI") {
+                                debug!(
+                                    "{chr:>indent$}Instrument: {}",
+                                    instrument.name,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            }
                             instruments.push(instrument);
                         }
                     }
-                }
-                IGEN => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(generator) = reader.read_ne::<Generator>() {
-                        if generator.oper != GeneratorType::StartAddrsOffset
-                            && generator.oper != GeneratorType::EndAddrsOffset
-                        {
-                            println!(
-                                "{chr:>indent$}Instrument Generator: {:?}, {}",
-                                generator.oper,
-                                generator.amount,
+                    IGEN => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(generator) = reader.read_ne::<Generator>() {
+                            if generator.oper != GeneratorType::StartAddrsOffset
+                                && generator.oper != GeneratorType::EndAddrsOffset
+                            {
+                                debug!(
+                                    "{chr:>indent$}Instrument Generator: {:?}, {}",
+                                    generator.oper,
+                                    generator.amount,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            }
+                            igens.push(generator);
+                        }
+                    }
+                    PGEN => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(generator) = reader.read_ne::<Generator>() {
+                            if generator.oper != GeneratorType::StartAddrsOffset
+                                && generator.oper != GeneratorType::EndAddrsOffset
+                            {
+                                debug!(
+                                    "{chr:>indent$}Preset Generator: {:?}, {}",
+                                    generator.oper,
+                                    generator.amount,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            }
+                            pgens.push(generator);
+                        }
+                    }
+                    IMOD => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(mod_list) = reader.read_ne::<ModList>() {
+                            debug!(
+                                "{chr:>indent$}Instrument ModList: {:?}",
+                                mod_list,
                                 indent = 2 * (indent + 1),
                                 chr = ' '
                             );
+                            imods.push(mod_list);
                         }
-                        igens.push(generator);
                     }
-                }
-                PGEN => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(generator) = reader.read_ne::<Generator>() {
-                        if generator.oper != GeneratorType::StartAddrsOffset
-                            && generator.oper != GeneratorType::EndAddrsOffset
-                        {
-                            println!(
-                                "{chr:>indent$}Preset Generator: {:?}, {}",
-                                generator.oper,
-                                generator.amount,
+                    PMOD => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(mod_list) = reader.read_ne::<ModList>() {
+                            debug!(
+                                "{chr:>indent$}Preset ModList: {:?}",
+                                mod_list,
                                 indent = 2 * (indent + 1),
                                 chr = ' '
                             );
+                            pmods.push(mod_list);
                         }
-                        pgens.push(generator);
                     }
-                }
-                IMOD => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(mod_list) = reader.read_ne::<ModList>() {
-                        println!(
-                            "{chr:>indent$}Instrument ModList: {:?}",
-                            mod_list,
-                            indent = 2 * (indent + 1),
-                            chr = ' '
-                        );
+                    IBAG => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(bag) = reader.read_ne::<Bag>() {
+                            debug!(
+                                "{chr:>indent$}Instrument Bag: {:?}",
+                                bag,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                            ibags.push(bag);
+                        }
                     }
-                }
-                PMOD => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(mod_list) = reader.read_ne::<ModList>() {
-                        println!(
-                            "{chr:>indent$}Preset ModList: {:?}",
-                            mod_list,
-                            indent = 2 * (indent + 1),
-                            chr = ' '
-                        );
+                    PBAG => {
+                        let data = c.read_contents(file).unwrap();
+                        let mut reader = Cursor::new(data);
+                        while let Ok(bag) = reader.read_ne::<Bag>() {
+                            debug!(
+                                "{chr:>indent$}Preset Bag: {:?}",
+                                bag,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                            pbags.push(bag);
+                        }
                     }
+                    _ => {}
                 }
-                IBAG => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(bag) = reader.read_ne::<Bag>() {
-                        println!(
-                            "{chr:>indent$}Instrument Bag: {:?}",
-                            bag,
-                            indent = 2 * (indent + 1),
-                            chr = ' '
-                        );
-                    }
-                }
-                PBAG => {
-                    let data = c.read_contents(file).unwrap();
-                    let mut reader = Cursor::new(data);
-                    while let Ok(bag) = reader.read_ne::<Bag>() {
-                        println!(
-                            "{chr:>indent$}Preset Bag: {:?}",
-                            bag,
-                            indent = 2 * (indent + 1),
-                            chr = ' '
-                        );
-                    }
-                }
-                _ => {}
             }
-        } else {
-            break;
+            None => break,
         }
+    }
+
+    info!("Presets:");
+    for ix in 0..presets.len() - 1 {
+        let is_last = ix == presets.len() - 1;
+        let preset = &presets[ix];
+        info!("  Name: {}", preset.name);
+        info!("  Pos: {}", preset.preset);
+        info!("  Bank: {}", preset.bank);
+        let bag_start = preset.bag_index as usize;
+        let bag_end = if is_last {
+            pbags.len()
+        } else {
+            let next_preset = &presets[ix + 1];
+            next_preset.bag_index as usize
+        };
+	let mut zone = 0;
+        for bag_ix in bag_start..bag_end {
+            info!("  Zone {}:", zone);
+	    zone = zone + 1;
+            let is_last = ix == pbags.len() - 1;
+            let bag = &pbags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
+                pgens.len()
+            } else {
+		let next_bag = &pbags[bag_ix + 1];
+                next_bag.gen_ndx as usize
+            };
+            info!("    Generators:");
+            for gen_ix in gen_start..gen_end {
+                info!("      {:?}", pgens[gen_ix]);
+            }
+            let mod_start = bag.mod_ndx as usize;
+            let mod_end = if is_last {
+                pmods.len()
+            } else {
+		let next_bag = &pbags[bag_ix + 1];
+                next_bag.mod_ndx as usize
+            };
+            info!("    Modulators:");
+            for mod_ix in mod_start..mod_end {
+                info!("      {:?}", pmods[mod_ix]);
+            }
+        }
+	info!("");
+    }
+    info!("Instruments:");
+    for ix in 0..instruments.len() - 1 {
+        let is_last = ix == instruments.len() - 1;
+        let instrument = &instruments[ix];
+        info!("  Name: {}", instrument.name);
+        let bag_start = instrument.bag_index as usize;
+        let bag_end = if is_last {
+            ibags.len()
+        } else {
+            let next_instrument = &instruments[ix + 1];
+            next_instrument.bag_index as usize
+        };
+	let mut zone = 0;
+        for bag_ix in bag_start..bag_end {
+            info!("  Zone {}:", zone);
+	    zone = zone + 1;
+            let is_last = ix == ibags.len() - 1;
+            let bag = &ibags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
+                igens.len()
+            } else {
+		let next_bag = &ibags[bag_ix + 1];
+                next_bag.gen_ndx as usize
+            };
+            info!("    Generators:");
+            for gen_ix in gen_start..gen_end {
+                info!("      {:?}", igens[gen_ix]);
+            }
+            let mod_start = bag.mod_ndx as usize;
+            let mod_end = if is_last {
+                imods.len()
+            } else {
+		let next_bag = &ibags[bag_ix + 1];
+                next_bag.mod_ndx as usize
+            };
+            info!("    Modulators:");
+            for mod_ix in mod_start..mod_end {
+                info!("      {:?}", imods[mod_ix]);
+            }
+        }
+	info!("");
     }
 }
 
 fn main() {
+    env_logger::init();
+
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
 
