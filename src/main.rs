@@ -1,8 +1,8 @@
 use binread::*;
-use log::{debug, info, error};
+use log::{debug, error, info, warn};
 use std::collections::VecDeque;
 use std::env;
-use std::fs::File;
+use std::fs;
 use std::io::Cursor;
 use std::path::Path;
 
@@ -141,7 +141,7 @@ fn parse_generator(v: u16) -> GeneratorType {
         34 => GeneratorType::AttackVolEnv,
         35 => GeneratorType::HoldVolEnv,
         36 => GeneratorType::DecayVolEnv,
-	37 => GeneratorType::SustainVolEnv,
+        37 => GeneratorType::SustainVolEnv,
         38 => GeneratorType::ReleaseVolEnv,
         39 => GeneratorType::KeynumToVolEnvHold,
         40 => GeneratorType::KeynumToVolEnvDecay,
@@ -154,17 +154,17 @@ fn parse_generator(v: u16) -> GeneratorType {
         48 => GeneratorType::InitialAttenuation,
         49 => GeneratorType::EndloopAddrsCoarseOffset,
         51 => GeneratorType::CoarseTune,
-	52 => GeneratorType::FineTune,
+        52 => GeneratorType::FineTune,
         53 => GeneratorType::SampleID,
         54 => GeneratorType::SampleModes,
         56 => GeneratorType::ScaleTuning,
         57 => GeneratorType::ExclusiveClass,
         58 => GeneratorType::OverridingRootKey,
-	60 => GeneratorType::EndOper,
+        60 => GeneratorType::EndOper,
         _x => {
-	    error!("Ununsed generator: {}", _x);
-	    GeneratorType::Unused
-	}
+            error!("Ununsed generator: {}", _x);
+            GeneratorType::Unused
+        }
     }
 }
 
@@ -271,9 +271,9 @@ enum DestOper {
 
 fn parse_dest_oper(v: u16) -> DestOper {
     if (v & 0x8000) == 0x8000 {
-	DestOper::Link(v & 0x7ff)
+        DestOper::Link(v & 0x7ff)
     } else {
-	DestOper::Generator(parse_generator(v))
+        DestOper::Generator(parse_generator(v))
     }
 }
 
@@ -391,7 +391,7 @@ struct SoundFont {
     pbags: Vec<Bag>,
 }
 
-fn parse_soundfont(chunk: riff::Chunk, file: &mut File) -> SoundFont {
+fn parse_soundfont(chunk: riff::Chunk, file: &mut fs::File) -> SoundFont {
     let mut todo = VecDeque::new();
     todo.push_back((chunk, 1));
     let mut samples = vec![];
@@ -593,14 +593,23 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut File) -> SoundFont {
     }
 
     SoundFont {
-	samples, sample_data, presets, instruments, igens, pgens, imods, pmods, ibags, pbags
+        samples,
+        sample_data,
+        presets,
+        instruments,
+        igens,
+        pgens,
+        imods,
+        pmods,
+        ibags,
+        pbags,
     }
 }
 
 impl SoundFont {
     fn dump(&self) {
-	info!("Presets:");
-	for ix in 0..self.presets.len() - 1 {
+        info!("Presets:");
+        for ix in 0..self.presets.len() - 1 {
             let is_last = ix == self.presets.len() - 1;
             let preset = &self.presets[ix];
             info!("  Name: {}", preset.name);
@@ -608,50 +617,49 @@ impl SoundFont {
             info!("  Bank: {}", preset.bank);
             let bag_start = preset.bag_index as usize;
             let bag_end = if is_last {
-		self.pbags.len()
+                self.pbags.len()
             } else {
-		let next_preset = &self.presets[ix + 1];
-		next_preset.bag_index as usize
+                let next_preset = &self.presets[ix + 1];
+                next_preset.bag_index as usize
             };
-	    let mut zone = 0;
+            let mut zone = 0;
             for bag_ix in bag_start..bag_end {
-		info!("  Preset zone {}:", zone);
-		zone = zone + 1;
-		let is_last = ix == self.pbags.len() - 1;
-		let bag = &self.pbags[bag_ix];
-		let gen_start = bag.gen_ndx as usize;
-		let gen_end = if is_last {
+                info!("  Preset zone {}:", zone);
+                zone = zone + 1;
+                let is_last = ix == self.pbags.len() - 1;
+                let bag = &self.pbags[bag_ix];
+                let gen_start = bag.gen_ndx as usize;
+                let gen_end = if is_last {
                     self.pgens.len()
-		} else {
-		    let next_bag = &self.pbags[bag_ix + 1];
+                } else {
+                    let next_bag = &self.pbags[bag_ix + 1];
                     next_bag.gen_ndx as usize
-		};
-		info!("    Generators:");
-		for gen_ix in gen_start..gen_end {
-		    let gen = &self.pgens[gen_ix];
-		    if gen.oper == GeneratorType::Instrument {
-			self.dump_instrument(gen.amount as usize);
-		    } else {
-			info!("      {:?}", gen);
-		    }
-		}
-		let mod_start = bag.mod_ndx as usize;
-		let mod_end = if is_last {
+                };
+                info!("    Generators:");
+                for gen_ix in gen_start..gen_end {
+                    let gen = &self.pgens[gen_ix];
+                    if gen.oper == GeneratorType::Instrument {
+                        self.dump_instrument(gen.amount as usize);
+                    } else {
+                        info!("      {:?}", gen);
+                    }
+                }
+                let mod_start = bag.mod_ndx as usize;
+                let mod_end = if is_last {
                     self.pmods.len()
-		} else {
-		    let next_bag = &self.pbags[bag_ix + 1];
+                } else {
+                    let next_bag = &self.pbags[bag_ix + 1];
                     next_bag.mod_ndx as usize
-		};
-		info!("    Modulators:");
-		for mod_ix in mod_start..mod_end {
+                };
+                info!("    Modulators:");
+                for mod_ix in mod_start..mod_end {
                     info!("      {:?}", self.pmods[mod_ix]);
-		}
+                }
             }
-	    info!("");
-	}
-	info!("Instruments:");
-	for ix in 0..self.instruments.len() - 1 {
-	}
+            info!("");
+        }
+        info!("Instruments:");
+        for ix in 0..self.instruments.len() - 1 {}
     }
 
     fn dump_instrument(&self, ix: usize) {
@@ -660,45 +668,94 @@ impl SoundFont {
         info!("      Instrument: {}", instrument.name);
         let bag_start = instrument.bag_index as usize;
         let bag_end = if is_last {
-	    self.ibags.len()
+            self.ibags.len()
         } else {
-	    let next_instrument = &self.instruments[ix + 1];
-	    next_instrument.bag_index as usize
+            let next_instrument = &self.instruments[ix + 1];
+            next_instrument.bag_index as usize
         };
-	let mut zone = 0;
+        let mut zone = 0;
         for bag_ix in bag_start..bag_end {
-	    info!("        Instrument zone {}:", zone);
-	    zone = zone + 1;
-	    let is_last = ix == self.ibags.len() - 1;
-	    let bag = &self.ibags[bag_ix];
-	    let gen_start = bag.gen_ndx as usize;
-	    let gen_end = if is_last {
+            info!("        Instrument zone {}:", zone);
+            zone = zone + 1;
+            let is_last = ix == self.ibags.len() - 1;
+            let bag = &self.ibags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
                 self.igens.len()
-	    } else {
-		let next_bag = &self.ibags[bag_ix + 1];
+            } else {
+                let next_bag = &self.ibags[bag_ix + 1];
                 next_bag.gen_ndx as usize
-	    };
-	    info!("          Generators:");
-	    for gen_ix in gen_start..gen_end {
-		let gen = &self.igens[gen_ix];
+            };
+            info!("          Generators:");
+            for gen_ix in gen_start..gen_end {
+                let gen = &self.igens[gen_ix];
                 info!("            {:?}", gen);
-		if gen.oper == GeneratorType::SampleID {
-		    info!("              {:?}", self.samples[gen.amount as usize]);
-		}
-	    }
-	    let mod_start = bag.mod_ndx as usize;
-	    let mod_end = if is_last {
+                if gen.oper == GeneratorType::SampleID {
+                    info!("              {:?}", self.samples[gen.amount as usize]);
+                }
+            }
+            let mod_start = bag.mod_ndx as usize;
+            let mod_end = if is_last {
                 self.imods.len()
-	    } else {
-		let next_bag = &self.ibags[bag_ix + 1];
+            } else {
+                let next_bag = &self.ibags[bag_ix + 1];
                 next_bag.mod_ndx as usize
-	    };
-	    info!("          Modulators:");
-	    for mod_ix in mod_start..mod_end {
+            };
+            info!("          Modulators:");
+            for mod_ix in mod_start..mod_end {
                 info!("             {:?}", self.imods[mod_ix]);
-	    }
+            }
         }
-	info!("");
+        info!("");
+    }
+
+    fn safe_name(s: &str) -> String {
+        s.chars()
+            .map(|x| match x {
+                '/' => '_',
+                '"' => '_',
+                _ => x,
+            })
+            .collect()
+    }
+
+    fn save_samples(&self, folder: &Path) -> std::io::Result<()> {
+        info!("saving samples to {}", folder.display());
+        fs::create_dir_all(folder)?;
+        info!("created folder!");
+        for sample in &self.samples {
+            match sample.sample_type {
+		1 | 2 | 4 => {
+		    // TODO: maybe combine 2 and 4 to stereo sample?
+                    info!("saving sample {}", sample.name);
+                    let h = wav::Header::new(1, 1, sample.sample_rate, 16);
+                    let name = SoundFont::safe_name(&sample.name) + ".wav";
+                    let file_path = folder.join(name);
+                    info!("file path: {}", file_path.display());
+                    let mut out_file = fs::File::create(file_path)?;
+                    info!("created file!");
+                    let mut out = vec![];
+                    let mut ix = sample.start * 2;
+                    loop {
+			let low = self.sample_data[ix as usize] as i16;
+			let high = self.sample_data[(ix + 1) as usize] as i16;
+			out.push(high << 8 | low);
+			ix = ix + 2;
+			if ix >= 2 * sample.end {
+                            break;
+			}
+                    }
+                    wav::write(h, wav::BitDepth::Sixteen(out), &mut out_file)?;
+		},
+		_ => {
+                    warn!(
+			"Unsupported sample type: {}, name: {}",
+			sample.sample_type, sample.name
+                    );
+		}
+            }
+        }
+        Ok(())
     }
 }
 
@@ -707,10 +764,14 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
+    let folder = if args.len() > 2 { Some(&args[2]) } else { None };
 
-    let mut file = File::open(Path::new(filename)).unwrap();
+    let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     let chunk = riff::Chunk::read(&mut file, 0).unwrap();
     let sf = parse_soundfont(chunk, &mut file);
     sf.dump();
+    if let Some(folder) = folder {
+        sf.save_samples(Path::new(folder)).unwrap();
+    }
 }
