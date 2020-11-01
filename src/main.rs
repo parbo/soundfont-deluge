@@ -1,10 +1,12 @@
 use binread::*;
 use log::{debug, error, info, warn};
+use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::env;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
+use xmlwriter::*;
 
 fn make_string(s: &[u8; 20]) -> String {
     let first_null = s.iter().position(|&x| x == 0).unwrap_or(20);
@@ -48,131 +50,141 @@ struct Instrument {
     bag_index: u16,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum GeneratorType {
-    StartAddrsOffset,
-    EndAddrsOffset,
-    StartloopAddrsOffset,
-    EndloopAddrsOffset,
-    StartAddrsCoarseOffset,
-    ModLfoToPitch,
-    VibLfoToPitch,
-    ModEnvToPitch,
-    InitialFilterFc,
-    InitialFilterQ,
-    ModLfoToFilterFc,
-    ModEnvToFilterFc,
-    EndAddrsCoarseOffset,
-    ModLfoToVolume,
-    ChorusEffectsSend,
-    ReverbEffectsSend,
-    Pan,
-    DelayModLFO,
-    FreqModLFO,
-    DelayVibLFO,
-    FreqVibLFO,
-    DelayModEnv,
-    AttackModEnv,
-    HoldModEnv,
-    DecayModEnv,
-    SustainModEnv,
-    ReleaseModEnv,
-    KeynumToModEnvHold,
-    KeynumToModEnvDecay,
-    DelayVolEnv,
-    SustainVolEnv,
-    AttackVolEnv,
-    HoldVolEnv,
-    DecayVolEnv,
-    ReleaseVolEnv,
-    KeynumToVolEnvHold,
-    KeynumToVolEnvDecay,
-    Instrument,
-    KeyRange,
-    VelRange,
-    StartloopAddrsCoarseOffset,
-    Keynum,
-    Velocity,
-    InitialAttenuation,
-    EndloopAddrsCoarseOffset,
-    CoarseTune,
-    FineTune,
-    SampleID,
-    SampleModes,
-    ScaleTuning,
-    ExclusiveClass,
-    OverridingRootKey,
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum LoopMode {
+    NoLoop,
+    ContinuousLoop,
+    ReleaseLoop,
+}
+
+#[derive(BinRead, Debug)]
+struct GeneratorData {
+    oper: u16,
+    amount: [u8; 2],
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+enum Generator {
+    StartAddrsOffset(i16),
+    EndAddrsOffset(i16),
+    StartloopAddrsOffset(i16),
+    EndloopAddrsOffset(i16),
+    StartAddrsCoarseOffset(i16),
+    ModLfoToPitch(i16),
+    VibLfoToPitch(i16),
+    ModEnvToPitch(i16),
+    InitialFilterFc(i16),
+    InitialFilterQ(i16),
+    ModLfoToFilterFc(i16),
+    ModEnvToFilterFc(i16),
+    EndAddrsCoarseOffset(i16),
+    ModLfoToVolume(i16),
+    ChorusEffectsSend(i16),
+    ReverbEffectsSend(i16),
+    Pan(i16),
+    DelayModLFO(i16),
+    FreqModLFO(i16),
+    DelayVibLFO(i16),
+    FreqVibLFO(i16),
+    DelayModEnv(i16),
+    AttackModEnv(i16),
+    HoldModEnv(i16),
+    DecayModEnv(i16),
+    SustainModEnv(i16),
+    ReleaseModEnv(i16),
+    KeynumToModEnvHold(i16),
+    KeynumToModEnvDecay(i16),
+    DelayVolEnv(i16),
+    SustainVolEnv(i16),
+    AttackVolEnv(i16),
+    HoldVolEnv(i16),
+    DecayVolEnv(i16),
+    ReleaseVolEnv(i16),
+    KeynumToVolEnvHold(i16),
+    KeynumToVolEnvDecay(i16),
+    Instrument(u16),
+    KeyRange(u8, u8),
+    VelRange(u8, u8),
+    StartloopAddrsCoarseOffset(i16),
+    Keynum(i16),
+    Velocity(i16),
+    InitialAttenuation(i16),
+    EndloopAddrsCoarseOffset(i16),
+    CoarseTune(i16),
+    FineTune(i16),
+    SampleID(u16),
+    SampleModes(LoopMode),
+    ScaleTuning(i16),
+    ExclusiveClass(i16),
+    OverridingRootKey(i16),
     EndOper,
     Unused,
 }
 
-fn parse_generator(v: u16) -> GeneratorType {
+fn parse_generator(v: u16, a: [u8; 2]) -> Generator {
     match v {
-        0 => GeneratorType::StartAddrsOffset,
-        1 => GeneratorType::EndAddrsOffset,
-        2 => GeneratorType::StartloopAddrsOffset,
-        3 => GeneratorType::EndloopAddrsOffset,
-        4 => GeneratorType::StartAddrsCoarseOffset,
-        5 => GeneratorType::ModLfoToPitch,
-        6 => GeneratorType::VibLfoToPitch,
-        7 => GeneratorType::ModEnvToPitch,
-        8 => GeneratorType::InitialFilterFc,
-        9 => GeneratorType::InitialFilterQ,
-        10 => GeneratorType::ModLfoToFilterFc,
-        11 => GeneratorType::ModEnvToFilterFc,
-        12 => GeneratorType::EndAddrsCoarseOffset,
-        13 => GeneratorType::ModLfoToVolume,
-        15 => GeneratorType::ChorusEffectsSend,
-        16 => GeneratorType::ReverbEffectsSend,
-        17 => GeneratorType::Pan,
-        21 => GeneratorType::DelayModLFO,
-        22 => GeneratorType::FreqModLFO,
-        23 => GeneratorType::DelayVibLFO,
-        24 => GeneratorType::FreqVibLFO,
-        25 => GeneratorType::DelayModEnv,
-        26 => GeneratorType::AttackModEnv,
-        27 => GeneratorType::HoldModEnv,
-        28 => GeneratorType::DecayModEnv,
-        29 => GeneratorType::SustainModEnv,
-        30 => GeneratorType::ReleaseModEnv,
-        31 => GeneratorType::KeynumToModEnvHold,
-        32 => GeneratorType::KeynumToModEnvDecay,
-        33 => GeneratorType::DelayVolEnv,
-        34 => GeneratorType::AttackVolEnv,
-        35 => GeneratorType::HoldVolEnv,
-        36 => GeneratorType::DecayVolEnv,
-        37 => GeneratorType::SustainVolEnv,
-        38 => GeneratorType::ReleaseVolEnv,
-        39 => GeneratorType::KeynumToVolEnvHold,
-        40 => GeneratorType::KeynumToVolEnvDecay,
-        41 => GeneratorType::Instrument,
-        43 => GeneratorType::KeyRange,
-        44 => GeneratorType::VelRange,
-        45 => GeneratorType::StartloopAddrsCoarseOffset,
-        46 => GeneratorType::Keynum,
-        47 => GeneratorType::Velocity,
-        48 => GeneratorType::InitialAttenuation,
-        49 => GeneratorType::EndloopAddrsCoarseOffset,
-        51 => GeneratorType::CoarseTune,
-        52 => GeneratorType::FineTune,
-        53 => GeneratorType::SampleID,
-        54 => GeneratorType::SampleModes,
-        56 => GeneratorType::ScaleTuning,
-        57 => GeneratorType::ExclusiveClass,
-        58 => GeneratorType::OverridingRootKey,
-        60 => GeneratorType::EndOper,
+        0 => Generator::StartAddrsOffset(i16::from_ne_bytes(a)),
+        1 => Generator::EndAddrsOffset(i16::from_ne_bytes(a)),
+        2 => Generator::StartloopAddrsOffset(i16::from_ne_bytes(a)),
+        3 => Generator::EndloopAddrsOffset(i16::from_ne_bytes(a)),
+        4 => Generator::StartAddrsCoarseOffset(i16::from_ne_bytes(a)),
+        5 => Generator::ModLfoToPitch(i16::from_ne_bytes(a)),
+        6 => Generator::VibLfoToPitch(i16::from_ne_bytes(a)),
+        7 => Generator::ModEnvToPitch(i16::from_ne_bytes(a)),
+        8 => Generator::InitialFilterFc(i16::from_ne_bytes(a)),
+        9 => Generator::InitialFilterQ(i16::from_ne_bytes(a)),
+        10 => Generator::ModLfoToFilterFc(i16::from_ne_bytes(a)),
+        11 => Generator::ModEnvToFilterFc(i16::from_ne_bytes(a)),
+        12 => Generator::EndAddrsCoarseOffset(i16::from_ne_bytes(a)),
+        13 => Generator::ModLfoToVolume(i16::from_ne_bytes(a)),
+        15 => Generator::ChorusEffectsSend(i16::from_ne_bytes(a)),
+        16 => Generator::ReverbEffectsSend(i16::from_ne_bytes(a)),
+        17 => Generator::Pan(i16::from_ne_bytes(a)),
+        21 => Generator::DelayModLFO(i16::from_ne_bytes(a)),
+        22 => Generator::FreqModLFO(i16::from_ne_bytes(a)),
+        23 => Generator::DelayVibLFO(i16::from_ne_bytes(a)),
+        24 => Generator::FreqVibLFO(i16::from_ne_bytes(a)),
+        25 => Generator::DelayModEnv(i16::from_ne_bytes(a)),
+        26 => Generator::AttackModEnv(i16::from_ne_bytes(a)),
+        27 => Generator::HoldModEnv(i16::from_ne_bytes(a)),
+        28 => Generator::DecayModEnv(i16::from_ne_bytes(a)),
+        29 => Generator::SustainModEnv(i16::from_ne_bytes(a)),
+        30 => Generator::ReleaseModEnv(i16::from_ne_bytes(a)),
+        31 => Generator::KeynumToModEnvHold(i16::from_ne_bytes(a)),
+        32 => Generator::KeynumToModEnvDecay(i16::from_ne_bytes(a)),
+        33 => Generator::DelayVolEnv(i16::from_ne_bytes(a)),
+        34 => Generator::AttackVolEnv(i16::from_ne_bytes(a)),
+        35 => Generator::HoldVolEnv(i16::from_ne_bytes(a)),
+        36 => Generator::DecayVolEnv(i16::from_ne_bytes(a)),
+        37 => Generator::SustainVolEnv(i16::from_ne_bytes(a)),
+        38 => Generator::ReleaseVolEnv(i16::from_ne_bytes(a)),
+        39 => Generator::KeynumToVolEnvHold(i16::from_ne_bytes(a)),
+        40 => Generator::KeynumToVolEnvDecay(i16::from_ne_bytes(a)),
+        41 => Generator::Instrument(u16::from_ne_bytes(a)),
+        43 => Generator::KeyRange(a[0], a[1]),
+        44 => Generator::VelRange(a[0], a[1]),
+        45 => Generator::StartloopAddrsCoarseOffset(i16::from_ne_bytes(a)),
+        46 => Generator::Keynum(i16::from_ne_bytes(a)),
+        47 => Generator::Velocity(i16::from_ne_bytes(a)),
+        48 => Generator::InitialAttenuation(i16::from_ne_bytes(a)),
+        50 => Generator::EndloopAddrsCoarseOffset(i16::from_ne_bytes(a)),
+        51 => Generator::CoarseTune(i16::from_ne_bytes(a)),
+        52 => Generator::FineTune(i16::from_ne_bytes(a)),
+        53 => Generator::SampleID(u16::from_ne_bytes(a)),
+        54 => Generator::SampleModes(match a[0] {
+            1 => LoopMode::ContinuousLoop,
+            3 => LoopMode::ReleaseLoop,
+            _ => LoopMode::NoLoop,
+        }),
+        56 => Generator::ScaleTuning(i16::from_ne_bytes(a)),
+        57 => Generator::ExclusiveClass(i16::from_ne_bytes(a)),
+        58 => Generator::OverridingRootKey(i16::from_ne_bytes(a)),
+        60 => Generator::EndOper,
         _x => {
             error!("Ununsed generator: {}", _x);
-            GeneratorType::Unused
+            Generator::Unused
         }
     }
-}
-
-#[derive(BinRead, Debug)]
-struct Generator {
-    #[br(map = |x: u16| parse_generator(x))]
-    oper: GeneratorType,
-    amount: u16,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -266,14 +278,14 @@ fn parse_modulator(v: u16) -> Modulator {
 #[derive(Debug)]
 enum DestOper {
     Link(u16),
-    Generator(GeneratorType),
+    Generator(Generator),
 }
 
 fn parse_dest_oper(v: u16) -> DestOper {
     if (v & 0x8000) == 0x8000 {
         DestOper::Link(v & 0x7ff)
     } else {
-        DestOper::Generator(parse_generator(v))
+        DestOper::Generator(parse_generator(v, [0, 0]))
     }
 }
 
@@ -500,37 +512,29 @@ fn parse_soundfont(chunk: riff::Chunk, file: &mut fs::File) -> SoundFont {
                     IGEN => {
                         let data = c.read_contents(file).unwrap();
                         let mut reader = Cursor::new(data);
-                        while let Ok(generator) = reader.read_ne::<Generator>() {
-                            if generator.oper != GeneratorType::StartAddrsOffset
-                                && generator.oper != GeneratorType::EndAddrsOffset
-                            {
-                                debug!(
-                                    "{chr:>indent$}Instrument Generator: {:?}, {}",
-                                    generator.oper,
-                                    generator.amount,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            }
-                            igens.push(generator);
+                        while let Ok(generator) = reader.read_ne::<GeneratorData>() {
+                            debug!(
+                                "{chr:>indent$}Instrument Generator: {:?}, {:?}",
+                                generator.oper,
+                                generator.amount,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                            igens.push(parse_generator(generator.oper, generator.amount));
                         }
                     }
                     PGEN => {
                         let data = c.read_contents(file).unwrap();
                         let mut reader = Cursor::new(data);
-                        while let Ok(generator) = reader.read_ne::<Generator>() {
-                            if generator.oper != GeneratorType::StartAddrsOffset
-                                && generator.oper != GeneratorType::EndAddrsOffset
-                            {
-                                debug!(
-                                    "{chr:>indent$}Preset Generator: {:?}, {}",
-                                    generator.oper,
-                                    generator.amount,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            }
-                            pgens.push(generator);
+                        while let Ok(generator) = reader.read_ne::<GeneratorData>() {
+                            debug!(
+                                "{chr:>indent$}Instrument Generator: {:?}, {:?}",
+                                generator.oper,
+                                generator.amount,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                            pgens.push(parse_generator(generator.oper, generator.amount));
                         }
                     }
                     IMOD => {
@@ -610,56 +614,61 @@ impl SoundFont {
     fn dump(&self) {
         info!("Presets:");
         for ix in 0..self.presets.len() - 1 {
-            let is_last = ix == self.presets.len() - 1;
-            let preset = &self.presets[ix];
-            info!("  Name: {}", preset.name);
-            info!("  Pos: {}", preset.preset);
-            info!("  Bank: {}", preset.bank);
-            let bag_start = preset.bag_index as usize;
-            let bag_end = if is_last {
-                self.pbags.len()
+            self.dump_preset(ix);
+        }
+    }
+
+    fn dump_preset(&self, ix: usize) {
+        let is_last = ix == self.presets.len() - 1;
+        let preset = &self.presets[ix];
+        info!("  Name: {}", preset.name);
+        info!("  Pos: {}", preset.preset);
+        info!("  Bank: {}", preset.bank);
+        let bag_start = preset.bag_index as usize;
+        let bag_end = if is_last {
+            self.pbags.len()
+        } else {
+            let next_preset = &self.presets[ix + 1];
+            next_preset.bag_index as usize
+        };
+        let mut zone = 0;
+        for bag_ix in bag_start..bag_end {
+            info!("  Preset zone {}:", zone);
+            zone = zone + 1;
+            let is_last = ix == self.pbags.len() - 1;
+            let bag = &self.pbags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
+                self.pgens.len()
             } else {
-                let next_preset = &self.presets[ix + 1];
-                next_preset.bag_index as usize
+                let next_bag = &self.pbags[bag_ix + 1];
+                next_bag.gen_ndx as usize
             };
-            let mut zone = 0;
-            for bag_ix in bag_start..bag_end {
-                info!("  Preset zone {}:", zone);
-                zone = zone + 1;
-                let is_last = ix == self.pbags.len() - 1;
-                let bag = &self.pbags[bag_ix];
-                let gen_start = bag.gen_ndx as usize;
-                let gen_end = if is_last {
-                    self.pgens.len()
-                } else {
-                    let next_bag = &self.pbags[bag_ix + 1];
-                    next_bag.gen_ndx as usize
-                };
-                info!("    Generators:");
-                for gen_ix in gen_start..gen_end {
-                    let gen = &self.pgens[gen_ix];
-                    if gen.oper == GeneratorType::Instrument {
-                        self.dump_instrument(gen.amount as usize);
-                    } else {
+            info!("    Generators:");
+            for gen_ix in gen_start..gen_end {
+                let gen = &self.pgens[gen_ix];
+                match gen {
+                    Generator::Instrument(index) => {
+                        self.dump_instrument(*index as usize);
+                    }
+                    _ => {
                         info!("      {:?}", gen);
                     }
                 }
-                let mod_start = bag.mod_ndx as usize;
-                let mod_end = if is_last {
-                    self.pmods.len()
-                } else {
-                    let next_bag = &self.pbags[bag_ix + 1];
-                    next_bag.mod_ndx as usize
-                };
-                info!("    Modulators:");
-                for mod_ix in mod_start..mod_end {
-                    info!("      {:?}", self.pmods[mod_ix]);
-                }
             }
-            info!("");
+            let mod_start = bag.mod_ndx as usize;
+            let mod_end = if is_last {
+                self.pmods.len()
+            } else {
+                let next_bag = &self.pbags[bag_ix + 1];
+                next_bag.mod_ndx as usize
+            };
+            info!("    Modulators:");
+            for mod_ix in mod_start..mod_end {
+                info!("      {:?}", self.pmods[mod_ix]);
+            }
         }
-        info!("Instruments:");
-        for ix in 0..self.instruments.len() - 1 {}
+        info!("");
     }
 
     fn dump_instrument(&self, ix: usize) {
@@ -689,9 +698,13 @@ impl SoundFont {
             info!("          Generators:");
             for gen_ix in gen_start..gen_end {
                 let gen = &self.igens[gen_ix];
-                info!("            {:?}", gen);
-                if gen.oper == GeneratorType::SampleID {
-                    info!("              {:?}", self.samples[gen.amount as usize]);
+                match gen {
+                    Generator::SampleID(index) => {
+                        info!("              {:?}", self.samples[*index as usize]);
+                    }
+                    _ => {
+                        info!("            {:?}", gen);
+                    }
                 }
             }
             let mod_start = bag.mod_ndx as usize;
@@ -707,6 +720,217 @@ impl SoundFont {
             }
         }
         info!("");
+    }
+
+    fn save_as_xml(&self, folder: &Path, sample_folder: &Path, ix: usize) {
+        info!("Writing xml to {} for {}", folder.display(), ix);
+        let mut w = XmlWriter::new(Options::default());
+        w.write_declaration();
+        w.start_element("sound");
+        w.write_attribute("firmwareVersion", "3.1.3");
+        w.write_attribute("earliestCompatibleFirmware", "3.1.0-beta");
+        w.write_attribute("polyphonic", "poly");
+        w.write_attribute("voicePriority", "1");
+        w.write_attribute("mode", "subtractive");
+        w.write_attribute("lpfMode", "24dB");
+        w.write_attribute("modFxType", "none");
+        let is_last = ix == self.presets.len() - 1;
+        let preset = &self.presets[ix];
+        let bag_start = preset.bag_index as usize;
+        let bag_end = if is_last {
+            self.pbags.len()
+        } else {
+            let next_preset = &self.presets[ix + 1];
+            next_preset.bag_index as usize
+        };
+        let mut zones = vec![];
+        let mut zone = 0;
+        for bag_ix in bag_start..bag_end {
+            zone = zone + 1;
+            let is_last = ix == self.pbags.len() - 1;
+            let bag = &self.pbags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
+                self.pgens.len()
+            } else {
+                let next_bag = &self.pbags[bag_ix + 1];
+                next_bag.gen_ndx as usize
+            };
+            for gen_ix in gen_start..gen_end {
+                let gen = &self.pgens[gen_ix];
+                if let Generator::Instrument(index) = gen {
+                    let mut gens = self.get_instrument_zones(*index as usize);
+                    zones.append(&mut gens);
+                }
+            }
+        }
+        // Map zones to oscs
+        let mut oscs = vec![];
+        let mut taken = HashSet::new();
+        loop {
+            let mut osc = vec![];
+            // Find next adjacent
+            loop {
+                let mut found = false;
+                for zone_ix in 0..zones.len() {
+                    if taken.contains(&zone_ix) {
+                        continue;
+                    }
+                    let zone = &zones[zone_ix];
+                    if let Some(Generator::KeyRange(low, _high)) =
+                        SoundFont::get_zone_key_range(zone)
+                    {
+                        if osc.len() == 0 {
+                            osc.push(zone_ix);
+                            taken.insert(zone_ix);
+                            found = true;
+                        } else {
+                            let prev_zone = osc.last().unwrap();
+                            if let Some(Generator::KeyRange(_plow, phigh)) =
+                                SoundFont::get_zone_key_range(&zones[*prev_zone])
+                            {
+                                if phigh + 1 == low {
+                                    osc.push(zone_ix);
+                                    taken.insert(zone_ix);
+                                    found = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if !found {
+                    break;
+                }
+            }
+            info!("osc: {:?}", osc);
+            if osc.len() == 0 {
+                break;
+            }
+            oscs.push(osc);
+        }
+
+        // Write out the first two
+        let mut ix = 0;
+        for osc in &oscs[0..2] {
+            ix = ix + 1;
+            w.start_element(&format!("osc{}", ix));
+            w.write_attribute("type", "sample");
+            w.write_attribute("loopMode", "0");
+            w.write_attribute("reversed", "0");
+            w.write_attribute("timeStretchEnable", "0");
+            w.write_attribute("timeStretchAmount", "0");
+            w.start_element("sampleRanges");
+            for o in osc {
+                w.start_element("sampleRange");
+                if let Some(Generator::KeyRange(low, high)) =
+                    SoundFont::get_zone_key_range(&zones[*o])
+                {
+                    w.write_attribute("rangeTopNote", &high.to_string());
+                }
+                if let Some(Generator::OverridingRootKey(root)) = SoundFont::get_zone_overriding_root_key(&zones[*o])
+                {
+		    // offset from middle c
+		    w.write_attribute("transpose", &(60 - root).to_string())
+		}
+                if let Some(Generator::FineTune(cents)) = SoundFont::get_zone_fine_tune(&zones[*o])
+                {
+		    w.write_attribute("cents", &cents.to_string())
+		}
+                if let Some(Generator::SampleID(sample_id)) = SoundFont::get_zone_sample(&zones[*o])
+                {
+                    let sample = &self.samples[sample_id as usize];
+                    let name = SoundFont::safe_name(&sample.name) + ".wav";
+                    let file_path: Vec<String> = sample_folder
+                        .join(name)
+                        .components()
+                        .map(|x| x.as_os_str().to_str().unwrap().into())
+                        .collect();
+                    w.write_attribute("fileName", &file_path.join("/"));
+                    w.start_element("zone");
+                    // TODO: take generator sample offsets into account
+                    w.write_attribute("startSamplePos", "0");
+                    w.write_attribute("endSamplePos", &(sample.end - sample.start).to_string());
+                    w.end_element();
+                }
+                w.end_element();
+            }
+            w.end_element();
+            w.end_element();
+        }
+        w.end_element();
+        let xml = w.end_document();
+        fs::create_dir_all(folder).unwrap();
+        let file_name = SoundFont::safe_name(&preset.name) + ".xml";
+        fs::write(folder.join(Path::new(&file_name)), xml).unwrap();
+    }
+
+    fn get_zone_sample(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::SampleID(_) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_key_range(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::KeyRange(_, _) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_overriding_root_key(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::OverridingRootKey(_) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_fine_tune(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::FineTune(_) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_instrument_zones(&self, ix: usize) -> Vec<Vec<Generator>> {
+        let mut zones = vec![];
+        let is_last = ix == self.instruments.len() - 1;
+        let instrument = &self.instruments[ix];
+        let bag_start = instrument.bag_index as usize;
+        let bag_end = if is_last {
+            self.ibags.len()
+        } else {
+            let next_instrument = &self.instruments[ix + 1];
+            next_instrument.bag_index as usize
+        };
+        let mut zone = 0;
+        for bag_ix in bag_start..bag_end {
+            zone = zone + 1;
+            let is_last = ix == self.ibags.len() - 1;
+            let bag = &self.ibags[bag_ix];
+            let gen_start = bag.gen_ndx as usize;
+            let gen_end = if is_last {
+                self.igens.len()
+            } else {
+                let next_bag = &self.ibags[bag_ix + 1];
+                next_bag.gen_ndx as usize
+            };
+            let mut zone = vec![];
+            for gen_ix in gen_start..gen_end {
+                let gen = &self.igens[gen_ix];
+                zone.push(*gen);
+            }
+            zones.push(zone);
+        }
+        zones
     }
 
     fn safe_name(s: &str) -> String {
@@ -725,8 +949,8 @@ impl SoundFont {
         info!("created folder!");
         for sample in &self.samples {
             match sample.sample_type {
-		1 | 2 | 4 => {
-		    // TODO: maybe combine 2 and 4 to stereo sample?
+                1 | 2 | 4 => {
+                    // TODO: maybe combine 2 and 4 to stereo sample?
                     info!("saving sample {}", sample.name);
                     let h = wav::Header::new(1, 1, sample.sample_rate, 16);
                     let name = SoundFont::safe_name(&sample.name) + ".wav";
@@ -737,22 +961,22 @@ impl SoundFont {
                     let mut out = vec![];
                     let mut ix = sample.start * 2;
                     loop {
-			let low = self.sample_data[ix as usize] as i16;
-			let high = self.sample_data[(ix + 1) as usize] as i16;
-			out.push(high << 8 | low);
-			ix = ix + 2;
-			if ix >= 2 * sample.end {
+                        let low = self.sample_data[ix as usize] as i16;
+                        let high = self.sample_data[(ix + 1) as usize] as i16;
+                        out.push(high << 8 | low);
+                        ix = ix + 2;
+                        if ix >= 2 * sample.end {
                             break;
-			}
+                        }
                     }
                     wav::write(h, wav::BitDepth::Sixteen(out), &mut out_file)?;
-		},
-		_ => {
+                }
+                _ => {
                     warn!(
-			"Unsupported sample type: {}, name: {}",
-			sample.sample_type, sample.name
+                        "Unsupported sample type: {}, name: {}",
+                        sample.sample_type, sample.name
                     );
-		}
+                }
             }
         }
         Ok(())
@@ -765,13 +989,19 @@ fn main() {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
     let folder = if args.len() > 2 { Some(&args[2]) } else { None };
+    let xml_folder = if args.len() > 3 { Some(&args[3]) } else { None };
 
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     let chunk = riff::Chunk::read(&mut file, 0).unwrap();
     let sf = parse_soundfont(chunk, &mut file);
-    sf.dump();
+    sf.dump_preset(2);
+    sf.dump_preset(5);
     if let Some(folder) = folder {
-        sf.save_samples(Path::new(folder)).unwrap();
+        //        sf.save_samples(Path::new(folder)).unwrap();
+        if let Some(xml_folder) = xml_folder {
+            sf.save_as_xml(Path::new(xml_folder), Path::new(folder), 2);
+            sf.save_as_xml(Path::new(xml_folder), Path::new(folder), 5);
+        }
     }
 }
