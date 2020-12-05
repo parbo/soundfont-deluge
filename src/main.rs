@@ -1,8 +1,8 @@
 use binread::*;
+use clap::{App, Arg};
 use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::collections::VecDeque;
-use std::env;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
@@ -811,7 +811,8 @@ impl SoundFont {
 
         // Write out the first two
         let mut ix = 0;
-        for osc in &oscs[0..2] {
+        let num = oscs.len();
+        for osc in &oscs[0..std::cmp::min(num, 2)] {
             ix = ix + 1;
             w.start_element(&format!("osc{}", ix));
             w.write_attribute("type", "sample");
@@ -822,20 +823,21 @@ impl SoundFont {
             w.start_element("sampleRanges");
             for o in osc {
                 w.start_element("sampleRange");
-                if let Some(Generator::KeyRange(low, high)) =
+                if let Some(Generator::KeyRange(_low, high)) =
                     SoundFont::get_zone_key_range(&zones[*o])
                 {
                     w.write_attribute("rangeTopNote", &high.to_string());
                 }
-                if let Some(Generator::OverridingRootKey(root)) = SoundFont::get_zone_overriding_root_key(&zones[*o])
+                if let Some(Generator::OverridingRootKey(root)) =
+                    SoundFont::get_zone_overriding_root_key(&zones[*o])
                 {
-		    // offset from middle c
-		    w.write_attribute("transpose", &(60 - root).to_string())
-		}
+                    // offset from middle c
+                    w.write_attribute("transpose", &(60 - root).to_string())
+                }
                 if let Some(Generator::FineTune(cents)) = SoundFont::get_zone_fine_tune(&zones[*o])
                 {
-		    w.write_attribute("cents", &cents.to_string())
-		}
+                    w.write_attribute("cents", &cents.to_string())
+                }
                 if let Some(Generator::SampleID(sample_id)) = SoundFont::get_zone_sample(&zones[*o])
                 {
                     let sample = &self.samples[sample_id as usize];
@@ -938,6 +940,8 @@ impl SoundFont {
             .map(|x| match x {
                 '/' => '_',
                 '"' => '_',
+                '?' => '_',
+                '*' => '_',
                 _ => x,
             })
             .collect()
@@ -986,22 +990,69 @@ impl SoundFont {
 fn main() {
     env_logger::init();
 
-    let args: Vec<String> = env::args().collect();
-    let filename = &args[1];
-    let folder = if args.len() > 2 { Some(&args[2]) } else { None };
-    let xml_folder = if args.len() > 3 { Some(&args[3]) } else { None };
+    let matches = App::new("Soundfont => Deluge")
+        .version("0.1")
+        .author("Pär Bohrarper <par@bohrarper.se>")
+        .about("Converts Soundfonts to Deluge xml + sample folders")
+        .arg(
+            Arg::with_name("INPUT")
+                .short("i")
+                .long("input")
+                .help("Sets the input file to use")
+                .required(true)
+                .index(1),
+        )
+        .arg(
+            Arg::with_name("SAMPLES")
+                .short("a")
+                .long("sample-folder")
+                .takes_value(true)
+                .help("Sets the output folder to save samples to")
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("SYNTH")
+                .short("y")
+                .long("synth-folder")
+                .takes_value(true)
+                .help("Sets the output folder to save synth xml to")
+                .required(false),
+        )
+        .arg(
+            Arg::with_name("DUMP")
+                .help("Dump info")
+                .short("d")
+                .takes_value(false)
+                .required(false),
+        )
+        .get_matches();
+
+    // Calling .unwrap() is safe here because "INPUT" is required.
+    let filename = &matches.value_of("INPUT").unwrap();
 
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     let chunk = riff::Chunk::read(&mut file, 0).unwrap();
     let sf = parse_soundfont(chunk, &mut file);
-    sf.dump_preset(2);
-    sf.dump_preset(5);
-    if let Some(folder) = folder {
-        //        sf.save_samples(Path::new(folder)).unwrap();
-        if let Some(xml_folder) = xml_folder {
-            sf.save_as_xml(Path::new(xml_folder), Path::new(folder), 2);
-            sf.save_as_xml(Path::new(xml_folder), Path::new(folder), 5);
-        }
+    if let Some(_) = matches.value_of("DUMP") {
+        sf.dump();
+    }
+    let sample_folder = matches.value_of("SAMPLES");
+    if let Some(folder) = sample_folder {
+        sf.save_samples(Path::new(folder)).unwrap();
+    }
+    if let Some(xml_folder) = matches.value_of("SYNTH") {
+        // TODO: save all xmls
+        // Note: if the samples aren't saved above we use a dummy folder
+        sf.save_as_xml(
+            Path::new(xml_folder),
+            Path::new(sample_folder.unwrap_or("SAMPLES")),
+            2,
+        );
+        sf.save_as_xml(
+            Path::new(xml_folder),
+            Path::new(sample_folder.unwrap_or("SAMPLES")),
+            5,
+        );
     }
 }
