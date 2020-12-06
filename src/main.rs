@@ -736,6 +736,7 @@ impl SoundFont {
         w.write_attribute("modFxType", "none");
         let is_last = ix == self.presets.len() - 1;
         let preset = &self.presets[ix];
+        info!("Preset: {}", preset.name);
         let bag_start = preset.bag_index as usize;
         let bag_end = if is_last {
             self.pbags.len()
@@ -780,17 +781,39 @@ impl SoundFont {
                     if let Some(Generator::KeyRange(low, _high)) =
                         SoundFont::get_zone_key_range(zone)
                     {
+                        let mut with_velrange = None;
+                        if let Some(Generator::VelRange(low, high)) =
+                            SoundFont::get_zone_vel_range(zone)
+                        {
+                            if low == 0 {
+                                with_velrange = Some("low");
+                            } else if high == 127 {
+                                with_velrange = Some("high");
+                            } else {
+                                with_velrange = Some("other");
+                            }
+                        }
+                        let mut with_attack = None;
+                        if let Some(Generator::AttackVolEnv(vol)) = SoundFont::get_zone_attack(zone)
+                        {
+                            with_attack = Some(f32::powf(2.0, (vol as f32 - 12000.0) / 1200.0));
+                        }
+                        let mut with_decay = None;
+                        if let Some(Generator::DecayVolEnv(vol)) = SoundFont::get_zone_decay(zone) {
+                            with_decay = Some(f32::powf(2.0, (vol as f32 - 12000.0) / 1200.0));
+                        }
                         if osc.len() == 0 {
-                            osc.push(zone_ix);
+                            osc.push((zone_ix, with_velrange, with_attack, with_decay));
                             taken.insert(zone_ix);
                             found = true;
                         } else {
-                            let prev_zone = osc.last().unwrap();
+                            let (prev_zone, _prev_velrange, _prev_attack, _prev_decay) =
+                                osc.last().unwrap();
                             if let Some(Generator::KeyRange(_plow, phigh)) =
                                 SoundFont::get_zone_key_range(&zones[*prev_zone])
                             {
                                 if phigh + 1 == low {
-                                    osc.push(zone_ix);
+                                    osc.push((zone_ix, with_velrange, with_attack, with_decay));
                                     taken.insert(zone_ix);
                                     found = true;
                                 }
@@ -821,7 +844,7 @@ impl SoundFont {
             w.write_attribute("timeStretchEnable", "0");
             w.write_attribute("timeStretchAmount", "0");
             w.start_element("sampleRanges");
-            for o in osc {
+            for (o, _vel_range, _attack, _decay) in osc {
                 w.start_element("sampleRange");
                 if let Some(Generator::KeyRange(_low, high)) =
                     SoundFont::get_zone_key_range(&zones[*o])
@@ -878,6 +901,33 @@ impl SoundFont {
     fn get_zone_key_range(zone: &[Generator]) -> Option<Generator> {
         for g in zone {
             if let Generator::KeyRange(_, _) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_vel_range(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::VelRange(_, _) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_attack(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::AttackVolEnv(_) = g {
+                return Some(*g);
+            }
+        }
+        None
+    }
+
+    fn get_zone_decay(zone: &[Generator]) -> Option<Generator> {
+        for g in zone {
+            if let Generator::DecayVolEnv(_) = g {
                 return Some(*g);
             }
         }
@@ -1034,7 +1084,8 @@ fn main() {
 
     let chunk = riff::Chunk::read(&mut file, 0).unwrap();
     let sf = parse_soundfont(chunk, &mut file);
-    if let Some(_) = matches.value_of("DUMP") {
+    if matches.is_present("DUMP") {
+        println!("dumping");
         sf.dump();
     }
     let sample_folder = matches.value_of("SAMPLES");
@@ -1044,15 +1095,10 @@ fn main() {
     if let Some(xml_folder) = matches.value_of("SYNTH") {
         // TODO: save all xmls
         // Note: if the samples aren't saved above we use a dummy folder
-        sf.save_as_xml(
-            Path::new(xml_folder),
-            Path::new(sample_folder.unwrap_or("SAMPLES")),
-            2,
-        );
-        sf.save_as_xml(
-            Path::new(xml_folder),
-            Path::new(sample_folder.unwrap_or("SAMPLES")),
-            5,
-        );
+        let samples = sample_folder.unwrap_or("SAMPLES");
+        sf.save_as_xml(Path::new(xml_folder), Path::new(samples), 2);
+        sf.save_as_xml(Path::new(xml_folder), Path::new(samples), 5);
+        sf.save_as_xml(Path::new(xml_folder), Path::new(samples), 20);
+        sf.save_as_xml(Path::new(xml_folder), Path::new(samples), 22);
     }
 }
