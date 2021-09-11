@@ -401,7 +401,8 @@ pub struct SoundFont {
 }
 
 impl SoundFont {
-    pub fn parse_soundfont(chunk: riff::Chunk, file: &mut fs::File) -> SoundFont {
+    pub fn parse_soundfont(file: &mut fs::File) -> SoundFont {
+	let chunk = riff::Chunk::read(file, 0).unwrap();
         let mut todo = VecDeque::new();
         todo.push_back((chunk, 1));
         let mut samples = vec![];

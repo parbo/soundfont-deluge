@@ -310,8 +310,7 @@ fn main() {
 
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
-    let chunk = riff::Chunk::read(&mut file, 0).unwrap();
-    let sf = SoundFont::parse_soundfont(chunk, &mut file);
+    let sf = SoundFont::parse_soundfont(&mut file);
     if matches.is_present("DUMP") {
         println!("dumping");
         sf.dump();
