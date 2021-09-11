@@ -1,12 +1,13 @@
+mod deluge;
 mod soundfont;
 
 use clap::{App, Arg};
-use log::{info};
+use log::info;
+use soundfont::{Generator, SoundFont};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 use xmlwriter::*;
-use soundfont::{Generator, SoundFont};
 
 fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     info!("Writing xml to {} for {}", folder.display(), ix);
@@ -66,9 +67,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
                 let zone = &zones[zone_ix];
                 if let Some(Generator::KeyRange(low, _high)) = get_zone_key_range(zone) {
                     let mut with_velrange = None;
-                    if let Some(Generator::VelRange(low, high)) =
-                        get_zone_vel_range(zone)
-                    {
+                    if let Some(Generator::VelRange(low, high)) = get_zone_vel_range(zone) {
                         if low == 0 {
                             with_velrange = Some("low");
                         } else if high == 127 {
@@ -129,8 +128,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
         w.start_element("sampleRanges");
         for (o, _vel_range, _attack, _decay) in osc {
             w.start_element("sampleRange");
-            if let Some(Generator::KeyRange(_low, high)) = get_zone_key_range(&zones[*o])
-            {
+            if let Some(Generator::KeyRange(_low, high)) = get_zone_key_range(&zones[*o]) {
                 w.write_attribute("rangeTopNote", &high.to_string());
             }
             if let Some(Generator::OverridingRootKey(root)) =
@@ -307,25 +305,32 @@ fn main() {
 
     // Calling .unwrap() is safe here because "INPUT" is required.
     let filename = &matches.value_of("INPUT").unwrap();
-
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
-    let sf = SoundFont::parse_soundfont(&mut file);
-    if matches.is_present("DUMP") {
-        println!("dumping");
-        sf.dump();
-    }
-    let sample_folder = matches.value_of("SAMPLES");
-    if let Some(folder) = sample_folder {
-        sf.save_samples(Path::new(folder)).unwrap();
-    }
-    if let Some(xml_folder) = matches.value_of("SYNTH") {
-        // TODO: save all xmls
-        // Note: if the samples aren't saved above we use a dummy folder
-        let samples = sample_folder.unwrap_or("SAMPLES");
-        save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 2);
-        save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 5);
-        save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 20);
-        save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 22);
+    if filename.ends_with(".xml") {
+	let synth = deluge::parse_sound(&mut file);
+        if matches.is_present("DUMP") {
+            println!("dumping");
+	    println!("{:?}", synth);
+	}
+    } else {
+        let sf = SoundFont::parse_soundfont(&mut file);
+        if matches.is_present("DUMP") {
+            println!("dumping");
+            sf.dump();
+        }
+        let sample_folder = matches.value_of("SAMPLES");
+        if let Some(folder) = sample_folder {
+            sf.save_samples(Path::new(folder)).unwrap();
+        }
+        if let Some(xml_folder) = matches.value_of("SYNTH") {
+            // TODO: save all xmls
+            // Note: if the samples aren't saved above we use a dummy folder
+            let samples = sample_folder.unwrap_or("SAMPLES");
+            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 2);
+            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 5);
+            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 20);
+            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 22);
+        }
     }
 }
