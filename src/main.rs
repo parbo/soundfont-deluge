@@ -308,7 +308,7 @@ fn main() {
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     if filename.ends_with(".xml") {
-	let synth = deluge::parse_sound(&mut file);
+	let synth = deluge::parse_synth(&mut file);
         if matches.is_present("DUMP") {
             println!("dumping");
 	    println!("{:?}", synth);
