@@ -2,6 +2,7 @@ use quick_xml::de::from_str;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs;
 use std::io::Read;
+use deluge_macros::serde_enum;
 
 #[derive(Debug, Eq, PartialEq)]
 struct Value(u32);
@@ -28,87 +29,40 @@ impl<'de> Deserialize<'de> for Value {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum OscType {
     AnalogSaw,
     AnalogSquare,
+    InLeft,
+    InRight,
     Saw,
     Sine,
     Square,
+    Triangle,
 }
 
-impl Serialize for OscType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            OscType::AnalogSaw => serializer.serialize_str("analogSaw"),
-            OscType::AnalogSquare => serializer.serialize_str("analogSquare"),
-            OscType::Saw => serializer.serialize_str("saw"),
-            OscType::Sine => serializer.serialize_str("sine"),
-            OscType::Square => serializer.serialize_str("square"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for OscType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "analogSaw" => Ok(OscType::AnalogSaw),
-            "analogSquare" => Ok(OscType::AnalogSquare),
-            "saw" => Ok(OscType::Saw),
-            "sine" => Ok(OscType::Sine),
-            "square" => Ok(OscType::Square),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
+impl Default for OscType {
+    fn default() -> OscType {
+	OscType::Sine
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Osc {
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default)]
     osc_type: OscType,
     transpose: i32,
     cents: i32,
     retrig_phase: Option<i32>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum LfoType {
+    Saw,
     Sine,
+    Square,
     Triangle,
-}
-
-impl Serialize for LfoType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            LfoType::Sine => serializer.serialize_str("sine"),
-            LfoType::Triangle => serializer.serialize_str("triangle"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for LfoType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "sine" => Ok(LfoType::Sine),
-            "triangle" => Ok(LfoType::Triangle),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -119,39 +73,11 @@ pub struct Lfo {
     sync_level: Option<i32>,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum Mode {
-    RingMod,
+    Ringmod,
     Subtractive,
     Fm,
-}
-
-impl Serialize for Mode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            Mode::RingMod => serializer.serialize_str("ringMod"),
-            Mode::Subtractive => serializer.serialize_str("subtractive"),
-            Mode::Fm => serializer.serialize_str("fm"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Mode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "ringMod" => Ok(Mode::RingMod),
-            "subtractive" => Ok(Mode::Subtractive),
-            "fm" => Ok(Mode::Fm),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -168,71 +94,19 @@ pub struct Delay {
     sync_level: i32,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum LpfMode {
     Mode24dB,
     Mode24dBDrive,
     Mode12dB,
 }
 
-impl Serialize for LpfMode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            LpfMode::Mode24dB => serializer.serialize_str("24dB"),
-            LpfMode::Mode24dBDrive => serializer.serialize_str("24dBDrive"),
-            LpfMode::Mode12dB => serializer.serialize_str("12dB"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for LpfMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "24dB" => Ok(LpfMode::Mode24dB),
-            "24dBDrive" => Ok(LpfMode::Mode24dBDrive),
-            "12dB" => Ok(LpfMode::Mode12dB),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum ModFxType {
     None,
     Chorus,
-}
-
-impl Serialize for ModFxType {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            ModFxType::None => serializer.serialize_str("none"),
-            ModFxType::Chorus => serializer.serialize_str("chorus"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for ModFxType {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "none" => Ok(ModFxType::None),
-            "chorus" => Ok(ModFxType::Chorus),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
+    Flanger,
+    Phaser,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -243,8 +117,9 @@ pub struct Envelope {
     release: Value,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum Source {
+    Aftertouch,
     Compressor,
     Envelope1,
     Envelope2,
@@ -255,46 +130,12 @@ pub enum Source {
     Random,
 }
 
-impl Serialize for Source {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            Source::Compressor => serializer.serialize_str("compressor"),
-            Source::Envelope1 => serializer.serialize_str("envelope1"),
-            Source::Envelope2 => serializer.serialize_str("envelope2"),
-            Source::Lfo1 => serializer.serialize_str("lfo1"),
-            Source::Lfo2 => serializer.serialize_str("lfo2"),
-            Source::Note => serializer.serialize_str("note"),
-            Source::Velocity => serializer.serialize_str("velocity"),
-            Source::Random => serializer.serialize_str("random"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Source {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "compressor" => Ok(Source::Compressor),
-            "envelope1" => Ok(Source::Envelope1),
-            "envelope2" => Ok(Source::Envelope2),
-            "lfo1" => Ok(Source::Lfo1),
-            "lfo2" => Ok(Source::Lfo2),
-            "note" => Ok(Source::Note),
-            "velocity" => Ok(Source::Velocity),
-            "random" => Ok(Source::Random),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
-}
-
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, serde_enum)]
 pub enum Destination {
+    ArpRate,
+    Bass,
+    BassFreq,
+    BitcrushAmount,
     Carrier1Feedback,
     Carrier2Feedback,
     DelayFeedback,
@@ -302,16 +143,25 @@ pub enum Destination {
     Env1Attack,
     Env1Decay,
     Env1Release,
+    Env1Sustain,
     Env2Attack,
     Env2Decay,
     Env2Release,
+    Env2Sustain,
     HpfFrequency,
     HpfResonance,
     Lfo1Rate,
     Lfo2Rate,
     LpfFrequency,
     LpfResonance,
+    ModFxDepth,
+    ModFxFeedback,
+    ModFxRate,
+    Modulator1Feedback,
+    Modulator1Pitch,
     Modulator1Volume,
+    Modulator2Feedback,
+    Modulator2Pitch,
     Modulator2Volume,
     NoiseVolume,
     OscAPhaseWidth,
@@ -323,99 +173,15 @@ pub enum Destination {
     Pan,
     Pitch,
     Portamento,
+    Range,
     ReverbAmount,
+    SampleRateReduction,
     StutterRate,
+    Treble,
+    TrebleFreq,
     Volume,
     VolumePostFx,
     VolumePostReverbSend,
-}
-
-impl Serialize for Destination {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        match *self {
-            Destination::Carrier1Feedback => serializer.serialize_str("carrier1Feedback"),
-            Destination::Carrier2Feedback => serializer.serialize_str("carrier2Feedback"),
-            Destination::DelayFeedback => serializer.serialize_str("delayFeedback"),
-            Destination::DelayRate => serializer.serialize_str("delayRate"),
-            Destination::Env1Attack => serializer.serialize_str("env1Attack"),
-            Destination::Env1Decay => serializer.serialize_str("env1Decay"),
-            Destination::Env1Release => serializer.serialize_str("env1Release"),
-            Destination::Env2Attack => serializer.serialize_str("env2Attack"),
-            Destination::Env2Decay => serializer.serialize_str("env2Decay"),
-            Destination::Env2Release => serializer.serialize_str("env2Release"),
-            Destination::HpfFrequency => serializer.serialize_str("hpfFrequency"),
-            Destination::HpfResonance => serializer.serialize_str("hpfResonance"),
-            Destination::Lfo1Rate => serializer.serialize_str("lfo1Rate"),
-            Destination::Lfo2Rate => serializer.serialize_str("lfo2Rate"),
-            Destination::LpfFrequency => serializer.serialize_str("lpfFrequency"),
-            Destination::LpfResonance => serializer.serialize_str("lpfResonance"),
-            Destination::Modulator1Volume => serializer.serialize_str("modulator1Volume"),
-            Destination::Modulator2Volume => serializer.serialize_str("modulator2Volume"),
-            Destination::NoiseVolume => serializer.serialize_str("noiseVolume"),
-            Destination::OscBPhaseWidth => serializer.serialize_str("oscBPhaseWidth"),
-            Destination::OscAPitch => serializer.serialize_str("oscAPitch"),
-            Destination::OscAVolume => serializer.serialize_str("oscAVolume"),
-            Destination::OscAPhaseWidth => serializer.serialize_str("oscAPhaseWidth"),
-            Destination::OscBPitch => serializer.serialize_str("oscBPitch"),
-            Destination::OscBVolume => serializer.serialize_str("oscBVolume"),
-            Destination::Pan => serializer.serialize_str("pan"),
-            Destination::Pitch => serializer.serialize_str("pitch"),
-            Destination::Portamento => serializer.serialize_str("portamento"),
-            Destination::ReverbAmount => serializer.serialize_str("reverbAmount"),
-            Destination::StutterRate => serializer.serialize_str("stutterRate"),
-            Destination::Volume => serializer.serialize_str("volume"),
-            Destination::VolumePostFx => serializer.serialize_str("volumePostFX"),
-            Destination::VolumePostReverbSend => serializer.serialize_str("volumePostReverbSend"),
-        }
-    }
-}
-
-impl<'de> Deserialize<'de> for Destination {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "carrier1Feedback" => Ok(Destination::Carrier1Feedback),
-            "carrier2Feedback" => Ok(Destination::Carrier2Feedback),
-            "delayFeedback" => Ok(Destination::DelayFeedback),
-            "delayRate" => Ok(Destination::DelayRate),
-            "env1Attack" => Ok(Destination::Env1Attack),
-            "env1Decay" => Ok(Destination::Env1Decay),
-            "env1Release" => Ok(Destination::Env1Release),
-            "env2Attack" => Ok(Destination::Env2Attack),
-            "env2Decay" => Ok(Destination::Env2Decay),
-            "env2Release" => Ok(Destination::Env2Release),
-            "hpfFrequency" => Ok(Destination::HpfFrequency),
-            "hpfResonance" => Ok(Destination::HpfResonance),
-            "lfo1Rate" => Ok(Destination::Lfo1Rate),
-            "lfo2Rate" => Ok(Destination::Lfo2Rate),
-            "lpfFrequency" => Ok(Destination::LpfFrequency),
-            "lpfResonance" => Ok(Destination::LpfResonance),
-	    "modulator1Volume" => Ok(Destination::Modulator1Volume),
-	    "modulator2Volume" => Ok(Destination::Modulator2Volume),
-	    "noiseVolume" => Ok(Destination::NoiseVolume),
-            "oscAPhaseWidth" => Ok(Destination::OscAPhaseWidth),
-            "oscAPitch" => Ok(Destination::OscAPitch),
-            "oscAVolume" => Ok(Destination::OscAVolume),
-            "oscBPhaseWidth" => Ok(Destination::OscBPhaseWidth),
-            "oscBPitch" => Ok(Destination::OscBPitch),
-            "oscBVolume" => Ok(Destination::OscBVolume),
-            "pan" => Ok(Destination::Pan),
-            "pitch" => Ok(Destination::Pitch),
-            "portamento" => Ok(Destination::Portamento),
-            "reverbAmount" => Ok(Destination::ReverbAmount),
-            "stutterRate" => Ok(Destination::StutterRate),
-            "volume" => Ok(Destination::Volume),
-            "volumePostFX" => Ok(Destination::VolumePostFx),
-            "volumePostReverbSend" => Ok(Destination::VolumePostReverbSend),
-            other => Err(serde::de::Error::custom(other.to_string())),
-        }
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -560,7 +326,7 @@ pub struct Sound {
     osc1: Osc,
     osc2: Osc,
     polyphonic: Polyphony,
-    clipping_amount: u32,
+    clipping_amount: Option<u32>,
     voice_priority: u32,
     lfo1: Lfo,
     lfo2: Lfo,
@@ -570,7 +336,7 @@ pub struct Sound {
     #[serde(rename = "modFXType")]
     mod_fx_type: ModFxType,
     default_params: DefaultParams,
-    midi_knobs: MidiKnobs,
+    midi_knobs: Option<MidiKnobs>,
     mod_knobs: ModKnobs,
 }
 
@@ -609,7 +375,7 @@ mod tests {
             osc_type: OscType::Saw,
             transpose: 0,
             cents: 0,
-            retrig_phase: -1,
+            retrig_phase: Some(-1),
         };
         let parsed: Osc = from_str(&s).unwrap();
         assert_eq!(parsed, expected);

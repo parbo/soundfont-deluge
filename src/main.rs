@@ -307,7 +307,7 @@ fn main() {
     let filename = &matches.value_of("INPUT").unwrap();
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
-    if filename.ends_with(".xml") {
+    if filename.to_lowercase().ends_with(".xml") {
 	let synth = deluge::parse_synth(&mut file);
         if matches.is_present("DUMP") {
             println!("dumping");
