@@ -111,6 +111,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     let mut sound_builder = deluge::SoundBuilder::default();
     sound_builder.firmware_version(Some("3.1.3".to_string()));
     sound_builder.earliest_compatible_firmware(Some("3.1.0-beta".to_string()));
+    let mut default_params_builder = deluge::DefaultParamsBuilder::default();
     let mut ix = 0;
     let num = oscs.len();
     for osc in &oscs[0..std::cmp::min(num, 2)] {
@@ -169,10 +170,13 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
             .unwrap();
         if ix == 1 {
             sound_builder.osc1(osc);
+	    default_params_builder.osc1_volume(deluge::Value(0x7FFFFFFF));
         } else {
             sound_builder.osc2(osc);
+	    default_params_builder.osc2_volume(deluge::Value(0x7FFFFFFF));
         }
     }
+    sound_builder.default_params(default_params_builder.build().unwrap());
     let sound = sound_builder.build().unwrap();
 
     let xml = sound.to_xml();

@@ -6,7 +6,7 @@ use yaserde::de::from_str;
 use yaserde::ser::to_string_with_config;
 
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
-pub struct Value(u32);
+pub struct Value(pub u32);
 
 impl yaserde::YaSerialize for Value {
     fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
