@@ -1,46 +1,72 @@
-use deluge_macros::serde_enum;
 use derive_builder::Builder;
-use quick_xml::de::from_str;
-use quick_xml::se::to_string;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
+use yaserde;
+use yaserde::de::from_str;
+use yaserde::ser::to_string_with_config;
 
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Value(u32);
 
-impl Serialize for Value {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let s = format!("{:08x}", self.0);
-        serializer.serialize_str(&s)
+impl yaserde::YaSerialize for Value {
+    fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
+        let s = format!("0x{:08x}", self.0);
+        let _ret = writer.write(xml::writer::XmlEvent::characters(&s));
+        Ok(())
+    }
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<xml::attribute::OwnedAttribute>,
+        namespace: xml::namespace::Namespace,
+    ) -> Result<
+        (
+            Vec<xml::attribute::OwnedAttribute>,
+            xml::namespace::Namespace,
+        ),
+        String,
+    > {
+        Ok((attributes, namespace))
     }
 }
 
-impl<'de> Deserialize<'de> for Value {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        u32::from_str_radix(&s[2..], 16)
-            .map(Value)
-            .map_err(serde::de::Error::custom)
+impl yaserde::YaDeserialize for Value {
+    fn deserialize<R: Read>(reader: &mut yaserde::de::Deserializer<R>) -> Result<Self, String> {
+        loop {
+            match reader.next_event()? {
+                xml::reader::XmlEvent::StartElement { .. } => {}
+                xml::reader::XmlEvent::Characters(ref text_content) => {
+                    return u32::from_str_radix(&text_content[2..], 16)
+                        .map(Value)
+                        .map_err(|e| e.to_string());
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+        Err("Unable to parse Value".to_string())
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum OscType {
+    #[yaserde(rename = "analogSaw")]
     AnalogSaw,
+    #[yaserde(rename = "analogSquare")]
     AnalogSquare,
+    #[yaserde(rename = "inLeft")]
     InLeft,
+    #[yaserde(rename = "inRight")]
     InRight,
+    #[yaserde(rename = "sample")]
     Sample,
+    #[yaserde(rename = "saw")]
     Saw,
+    #[yaserde(rename = "sine")]
     Sine,
+    #[yaserde(rename = "square")]
     Square,
+    #[yaserde(rename = "triangle")]
     Triangle,
 }
 
@@ -50,8 +76,7 @@ impl Default for OscType {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Zone {
     start_sample_pos: u32,
@@ -60,8 +85,7 @@ pub struct Zone {
     end_loop_pos: Option<u32>,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct SampleRange {
     range_top_note: Option<i32>,
@@ -71,37 +95,63 @@ pub struct SampleRange {
     zone: Zone,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct SampleRanges {
     sample_range: Vec<SampleRange>,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Osc {
-    #[serde(rename = "type", default)]
+    #[yaserde(attribute, rename = "type")]
     osc_type: OscType,
+    #[yaserde(attribute)]
     transpose: Option<i32>,
+    #[yaserde(attribute)]
     cents: Option<i32>,
     // TODO: make separate datatypes for each oscillator type instead of having Option
     // Regular wave oscillators
+    #[yaserde(attribute, rename = "retrigPhase")]
     retrig_phase: Option<i32>,
     // Sample oscillator
+    #[yaserde(attribute, rename = "loopMode")]
     loop_mode: Option<i32>,
+    #[yaserde(attribute, rename = "reversed")]
     reversed: Option<i32>,
+    #[yaserde(attribute, rename = "timeStretchEnable")]
     time_stretch_enable: Option<i32>,
+    #[yaserde(attribute, rename = "timeStretchAmount")]
     time_stretch_amount: Option<i32>,
+    #[yaserde(rename = "sampleRanges")]
     sample_ranges: Option<SampleRanges>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+impl Default for Osc {
+    fn default() -> Osc {
+        Osc {
+            osc_type: OscType::Square,
+            transpose: Some(0),
+            cents: Some(0),
+            retrig_phase: Some(-1),
+            loop_mode: None,
+            reversed: None,
+            time_stretch_enable: None,
+            time_stretch_amount: None,
+            sample_ranges: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum LfoType {
+    #[yaserde(rename = "saw")]
     Saw,
+    #[yaserde(rename = "sine")]
     Sine,
+    #[yaserde(rename = "square")]
     Square,
+    #[yaserde(rename = "triangle")]
     Triangle,
 }
 
@@ -111,19 +161,22 @@ impl Default for LfoType {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Lfo {
-    #[serde(rename = "type")]
+    #[yaserde(attribute, rename = "type")]
     lfo_type: LfoType,
+    #[yaserde(attribute, rename = "syncLevel")]
     sync_level: Option<i32>,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum Mode {
+    #[yaserde(rename = "ringmod")]
     Ringmod,
+    #[yaserde(rename = "subtractive")]
     Subtractive,
+    #[yaserde(rename = "fm")]
     Fm,
 }
 
@@ -133,10 +186,12 @@ impl Default for Mode {
     }
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Unison {
+    #[yaserde(attribute)]
     num: i32,
+    #[yaserde(attribute)]
     detune: i32,
 }
 
@@ -146,12 +201,14 @@ impl Default for Unison {
     }
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Delay {
+    #[yaserde(attribute, rename = "pingPong")]
     ping_pong: i32,
+    #[yaserde(attribute)]
     analog: i32,
+    #[yaserde(attribute, rename = "syncLevel")]
     sync_level: i32,
 }
 
@@ -173,30 +230,46 @@ pub enum LpfMode {
 }
 
 // Need custom one for this since identifiers can't start with numbers
-impl Serialize for LpfMode {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
+impl yaserde::YaSerialize for LpfMode {
+    fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
         match *self {
-            LpfMode::Mode24dB => serializer.serialize_str("24dB"),
-            LpfMode::Mode24dBDrive => serializer.serialize_str("24dBDrive"),
-            LpfMode::Mode12dB => serializer.serialize_str("12dB"),
+            LpfMode::Mode24dB => writer
+                .write(xml::writer::XmlEvent::characters("24dB"))
+                .map_err(|e| e.to_string()),
+            LpfMode::Mode24dBDrive => writer
+                .write(xml::writer::XmlEvent::characters("24dBDrive"))
+                .map_err(|e| e.to_string()),
+            LpfMode::Mode12dB => writer
+                .write(xml::writer::XmlEvent::characters("12dB"))
+                .map_err(|e| e.to_string()),
         }
+    }
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<xml::attribute::OwnedAttribute>,
+        namespace: xml::namespace::Namespace,
+    ) -> Result<
+        (
+            Vec<xml::attribute::OwnedAttribute>,
+            xml::namespace::Namespace,
+        ),
+        String,
+    > {
+        Ok((attributes, namespace))
     }
 }
 
-impl<'de> Deserialize<'de> for LpfMode {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "24dB" => Ok(LpfMode::Mode24dB),
-            "24dBDrive" => Ok(LpfMode::Mode24dBDrive),
-            "12dB" => Ok(LpfMode::Mode12dB),
-            other => Err(serde::de::Error::custom(other.to_string())),
+impl yaserde::YaDeserialize for LpfMode {
+    fn deserialize<R: Read>(reader: &mut yaserde::de::Deserializer<R>) -> Result<Self, String> {
+        if let xml::reader::XmlEvent::Characters(s) = reader.peek()?.to_owned() {
+            match s.as_str() {
+                "24dB" => Ok(LpfMode::Mode24dB),
+                "24dBDrive" => Ok(LpfMode::Mode24dBDrive),
+                "12dB" => Ok(LpfMode::Mode12dB),
+                other => Err(other.to_string()),
+            }
+        } else {
+            Err("Characters missing".to_string())
         }
     }
 }
@@ -207,11 +280,15 @@ impl Default for LpfMode {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum ModFxType {
+    #[yaserde(rename = "none")]
     None,
+    #[yaserde(rename = "chorus")]
     Chorus,
+    #[yaserde(rename = "flanger")]
     Flanger,
+    #[yaserde(rename = "phaser")]
     Phaser,
 }
 
@@ -221,105 +298,188 @@ impl Default for ModFxType {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Envelope {
+    #[yaserde(attribute)]
     attack: Value,
+    #[yaserde(attribute)]
     decay: Value,
+    #[yaserde(attribute)]
     sustain: Value,
+    #[yaserde(attribute)]
     release: Value,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum Source {
+    #[yaserde(rename = "aftertouch")]
     Aftertouch,
+    #[yaserde(rename = "compressor")]
     Compressor,
+    #[yaserde(rename = "envelope1")]
     Envelope1,
+    #[yaserde(rename = "envelope2")]
     Envelope2,
+    #[yaserde(rename = "lfo1")]
     Lfo1,
+    #[yaserde(rename = "lfo2")]
     Lfo2,
+    #[yaserde(rename = "note")]
     Note,
+    #[yaserde(rename = "velocity")]
     Velocity,
+    #[yaserde(rename = "random")]
     Random,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+impl Default for Source {
+    fn default() -> Source {
+        Source::Velocity
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum Destination {
+    #[yaserde(rename = "arpRate")]
     ArpRate,
+    #[yaserde(rename = "bass")]
     Bass,
+    #[yaserde(rename = "bassFreq")]
     BassFreq,
+    #[yaserde(rename = "bitcrushAmount")]
     BitcrushAmount,
+    #[yaserde(rename = "carrier1Feedback")]
     Carrier1Feedback,
+    #[yaserde(rename = "carrier2Feedback")]
     Carrier2Feedback,
+    #[yaserde(rename = "delayFeedback")]
     DelayFeedback,
+    #[yaserde(rename = "delayRate")]
     DelayRate,
+    #[yaserde(rename = "env1Attack")]
     Env1Attack,
+    #[yaserde(rename = "env1Decay")]
     Env1Decay,
+    #[yaserde(rename = "env1Release")]
     Env1Release,
+    #[yaserde(rename = "env1Sustain")]
     Env1Sustain,
+    #[yaserde(rename = "env2Attack")]
     Env2Attack,
+    #[yaserde(rename = "env2Decay")]
     Env2Decay,
+    #[yaserde(rename = "env2Release")]
     Env2Release,
+    #[yaserde(rename = "env2Sustain")]
     Env2Sustain,
+    #[yaserde(rename = "hpfFreuency")]
     HpfFrequency,
+    #[yaserde(rename = "hpfResonance")]
     HpfResonance,
+    #[yaserde(rename = "lfo1Rate")]
     Lfo1Rate,
+    #[yaserde(rename = "lfo2Rate")]
     Lfo2Rate,
+    #[yaserde(rename = "lpfFrequency")]
     LpfFrequency,
+    #[yaserde(rename = "lpfResonance")]
     LpfResonance,
+    #[yaserde(rename = "modFXDepth")]
     ModFxDepth,
+    #[yaserde(rename = "modFXFeedback")]
     ModFxFeedback,
+    #[yaserde(rename = "modFXRate")]
     ModFxRate,
+    #[yaserde(rename = "modulator1Feedback")]
     Modulator1Feedback,
+    #[yaserde(rename = "modulator1Pitch")]
     Modulator1Pitch,
+    #[yaserde(rename = "modulator1Volume")]
     Modulator1Volume,
+    #[yaserde(rename = "modulator2Feedback")]
     Modulator2Feedback,
+    #[yaserde(rename = "modulator2Pitch")]
     Modulator2Pitch,
+    #[yaserde(rename = "modulator2Volume")]
     Modulator2Volume,
+    #[yaserde(rename = "noiseVolume")]
     NoiseVolume,
-    OscAPhaseWidth,
-    OscAPitch,
-    OscAVolume,
-    OscBPhaseWidth,
-    OscBPitch,
-    OscBVolume,
+    #[yaserde(rename = "oscAPhaseWidth")]
+    Osc1PhaseWidth,
+    #[yaserde(rename = "oscAPitch")]
+    Osc1Pitch,
+    #[yaserde(rename = "oscAVolume")]
+    Osc1Volume,
+    #[yaserde(rename = "oscBPhaseWidth")]
+    Osc2PhaseWidth,
+    #[yaserde(rename = "oscBPitch")]
+    Osc2Pitch,
+    #[yaserde(rename = "oscBVolume")]
+    Osc2Volume,
+    #[yaserde(rename = "pan")]
     Pan,
+    #[yaserde(rename = "pitch")]
     Pitch,
+    #[yaserde(rename = "portamento")]
     Portamento,
+    #[yaserde(rename = "range")]
     Range,
+    #[yaserde(rename = "reverbAmount")]
     ReverbAmount,
+    #[yaserde(rename = "sampleRateReduction")]
     SampleRateReduction,
+    #[yaserde(rename = "stutterRate")]
     StutterRate,
+    #[yaserde(rename = "treble")]
     Treble,
+    #[yaserde(rename = "trebleFreq")]
     TrebleFreq,
+    #[yaserde(rename = "volume")]
     Volume,
+    #[yaserde(rename = "volumePostFX")]
     VolumePostFx,
+    #[yaserde(rename = "volumePostReverbSend")]
     VolumePostReverbSend,
 }
 
-#[derive(Serialize, Clone, Builder, Deserialize, Debug, Eq, PartialEq)]
+impl Default for Destination {
+    fn default() -> Destination {
+        Destination::Volume
+    }
+}
+
+#[derive(YaSerialize, Clone, Builder, YaDeserialize, Debug, Eq, PartialEq)]
 pub struct PatchCable {
+    #[yaserde(attribute)]
     source: Source,
+    #[yaserde(attribute)]
     destination: Destination,
+    #[yaserde(attribute)]
     amount: Value,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Equalizer {
+    #[yaserde(attribute)]
     bass: Value,
+    #[yaserde(attribute)]
     treble: Value,
+    #[yaserde(attribute)]
     bass_frequency: Value,
+    #[yaserde(attribute)]
     treble_frequency: Value,
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Compressor {
+    #[yaserde(attribute, rename = "syncLevel")]
     sync_level: i32,
+    #[yaserde(attribute)]
     attack: i32,
+    #[yaserde(attribute)]
     release: i32,
 }
 
@@ -333,57 +493,86 @@ impl Default for Compressor {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct PatchCables {
+    #[yaserde(rename = "patchCable")]
     patch_cable: Vec<PatchCable>,
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct DefaultParams {
+    #[yaserde(attribute, rename = "arpeggiatorGate")]
     arpeggiator_gate: Value,
+    #[yaserde(attribute)]
     portamento: Value,
+    #[yaserde(attribute, rename = "compressorShape")]
     compressor_shape: Value,
-    osc_a_volume: Value,
-    osc_a_pulse_width: Value,
-    osc_b_volume: Value,
-    osc_b_pulse_width: Value,
+    #[yaserde(attribute, rename = "oscAVolume")]
+    osc1_volume: Value,
+    #[yaserde(attribute, rename = "oscAPulseWidth")]
+    osc1_pulse_width: Value,
+    #[yaserde(attribute, rename = "oscBVolume")]
+    osc2_volume: Value,
+    #[yaserde(attribute, rename = "oscBPulseWidth")]
+    osc2_pulse_width: Value,
+    #[yaserde(attribute, rename = "noiseVolume")]
     noise_volume: Value,
+    #[yaserde(attribute)]
     volume: Value,
+    #[yaserde(attribute)]
     pan: Value,
+    #[yaserde(attribute, rename = "lpfFrequency")]
     lpf_frequency: Value,
+    #[yaserde(attribute, rename = "lpfResonance")]
     lpf_resonance: Value,
+    #[yaserde(attribute, rename = "hpfFrequency")]
     hpf_frequency: Value,
+    #[yaserde(attribute, rename = "hpfResonance")]
     hpf_resonance: Value,
-    envelope_1: Envelope,
-    envelope_2: Envelope,
-    lfo_1_rate: Value,
-    lfo_2_rate: Value,
-    modulator_1_amount: Value,
-    modulator_1_feedback: Value,
-    modulator_2_amount: Value,
-    modulator_2_feedback: Value,
-    carrier_1_feedback: Value,
-    carrier_2_feedback: Value,
-    #[serde(rename = "modFXRate")]
+    envelope1: Envelope,
+    envelope2: Envelope,
+    #[yaserde(attribute, rename = "lfo1Rate")]
+    lfo1_rate: Value,
+    #[yaserde(attribute, rename = "lfo2Rate")]
+    lfo2_rate: Value,
+    #[yaserde(attribute, rename = "modulator1Amount")]
+    modulator1_amount: Value,
+    #[yaserde(attribute, renanme = "modulator1Feedback")]
+    modulator1_feedback: Value,
+    #[yaserde(attribute, rename = "modulator2Amount")]
+    modulator2_amount: Value,
+    #[yaserde(attribute, rename = "modulator2Feedback")]
+    modulator2_feedback: Value,
+    #[yaserde(attribute, rename = "carrier1Feedback")]
+    carrier1_feedback: Value,
+    #[yaserde(attribute, rename = "carrier2Feedback")]
+    carrier2_feedback: Value,
+    #[yaserde(attribute, rename = "modFXRate")]
     mod_fx_rate: Value,
-    #[serde(rename = "modFXDepth")]
+    #[yaserde(attribute, rename = "modFXDepth")]
     mod_fx_depth: Value,
+    #[yaserde(attribute, rename = "delayRate")]
     delay_rate: Value,
+    #[yaserde(attribute, rename = "delayFeedback")]
     delay_feedback: Value,
+    #[yaserde(attribute, rename = "reverbAmount")]
     reverb_amount: Value,
+    #[yaserde(attribute, rename = "arpeggiatorRate")]
     arpeggiator_rate: Value,
+    #[yaserde(rename = "patchCables")]
     patch_cables: PatchCables,
+    #[yaserde(attribute, rename = "stutterRate")]
     stutter_rate: Value,
+    #[yaserde(attribute, rename = "sampleRateReduction")]
     sample_rate_reduction: Value,
-    bit_crush: Value,
+    #[yaserde(attribute, rename = "bitCrush")]
+    bitcrush: Value,
     equalizer: Equalizer,
-    #[serde(rename = "modFXOffset")]
+    #[yaserde(attribute, rename = "modFXOffset")]
     mod_fx_offset: Value,
-    #[serde(rename = "modFXFeedback")]
+    #[yaserde(attribute, rename = "modFXFeedback")]
     mod_fx_feedback: Value,
 }
 
@@ -399,10 +588,10 @@ impl Default for DefaultParams {
             arpeggiator_gate: Value(0x00000000),
             portamento: Value(0x80000000),
             compressor_shape: Value(0xDC28F5B2),
-            osc_a_volume: Value(0x7FFFFFFF),
-            osc_a_pulse_width: Value(0x00000000),
-            osc_b_volume: Value(0x80000000),
-            osc_b_pulse_width: Value(0x00000000),
+            osc1_volume: Value(0x7FFFFFFF),
+            osc1_pulse_width: Value(0x00000000),
+            osc2_volume: Value(0x80000000),
+            osc2_pulse_width: Value(0x00000000),
             noise_volume: Value(0x80000000),
             volume: Value(0x4CCCCCA8),
             pan: Value(0x00000000),
@@ -410,26 +599,26 @@ impl Default for DefaultParams {
             lpf_resonance: Value(0x80000000),
             hpf_frequency: Value(0x80000000),
             hpf_resonance: Value(0x80000000),
-            envelope_1: Envelope {
+            envelope1: Envelope {
                 attack: Value(0x80000000),
                 decay: Value(0xE6666654),
                 sustain: Value(0x7FFFFFFF),
                 release: Value(0x80000000),
             },
-            envelope_2: Envelope {
+            envelope2: Envelope {
                 attack: Value(0xE6666654),
                 decay: Value(0xE6666654),
                 sustain: Value(0xFFFFFFE9),
                 release: Value(0xE6666654),
             },
-            lfo_1_rate: Value(0x1999997E),
-            lfo_2_rate: Value(0x00000000),
-            modulator_1_amount: Value(0x80000000),
-            modulator_1_feedback: Value(0x80000000),
-            modulator_2_amount: Value(0x80000000),
-            modulator_2_feedback: Value(0x80000000),
-            carrier_1_feedback: Value(0x80000000),
-            carrier_2_feedback: Value(0x80000000),
+            lfo1_rate: Value(0x1999997E),
+            lfo2_rate: Value(0x00000000),
+            modulator1_amount: Value(0x80000000),
+            modulator1_feedback: Value(0x80000000),
+            modulator2_amount: Value(0x80000000),
+            modulator2_feedback: Value(0x80000000),
+            carrier1_feedback: Value(0x80000000),
+            carrier2_feedback: Value(0x80000000),
             mod_fx_rate: Value(0x80000000),
             mod_fx_depth: Value(0x80000000),
             delay_rate: Value(0x00000000),
@@ -441,7 +630,7 @@ impl Default for DefaultParams {
             },
             stutter_rate: Value(0x00000000),
             sample_rate_reduction: Value(0x80000000),
-            bit_crush: Value(0x80000000),
+            bitcrush: Value(0x80000000),
             equalizer: Equalizer::default(),
             mod_fx_offset: Value(0x00000000),
             mod_fx_feedback: Value(0x00000000),
@@ -449,30 +638,30 @@ impl Default for DefaultParams {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct MidiKnob {}
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
+#[yaserde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct MidiKnobs {
-    #[serde(default)]
     midi_knob: Vec<MidiKnob>,
 }
 
-#[derive(Serialize, Clone, Builder, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(YaSerialize, Clone, Builder, YaDeserialize, Debug, Eq, PartialEq)]
+#[yaserde(rename_all = "camelCase")]
 pub struct ModKnob {
+    #[yaserde(attribute, rename = "controlsParam")]
     controls_param: Destination,
+    #[yaserde(attribute, rename = "patchAmountFromSource")]
     patch_amount_from_source: Option<Source>,
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
+#[yaserde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct ModKnobs {
-    #[serde(default)]
     mod_knob: Vec<ModKnob>,
 }
 
@@ -549,8 +738,9 @@ impl Default for ModKnobs {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+#[derive(Debug, Clone, Eq, PartialEq, YaSerialize, YaDeserialize)]
 pub enum ArpeggiatorMode {
+    #[yaserde(rename = "off")]
     Off,
 }
 
@@ -560,11 +750,14 @@ impl Default for ArpeggiatorMode {
     }
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Arpeggiator {
+    #[yaserde(attribute)]
     mode: ArpeggiatorMode,
+    #[yaserde(attribute, rename = "numOctaves")]
     num_octaves: i32,
+    #[yaserde(attribute, rename = "syncLevel")]
     sync_level: i32,
 }
 
@@ -593,80 +786,112 @@ impl Default for Polyphony {
     }
 }
 
-impl Serialize for Polyphony {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
+impl yaserde::YaSerialize for Polyphony {
+    fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
         match *self {
-            Polyphony::Auto => serializer.serialize_str("auto"),
-            Polyphony::Mono => serializer.serialize_str("mono"),
-            Polyphony::Legato => serializer.serialize_str("legato"),
-            Polyphony::Poly => serializer.serialize_str("poly"),
-            Polyphony::Integer(x) => serializer.serialize_u32(x),
+            Polyphony::Auto => writer
+                .write(xml::writer::XmlEvent::characters("auto"))
+                .map_err(|e| e.to_string()),
+            Polyphony::Mono => writer
+                .write(xml::writer::XmlEvent::characters("mono"))
+                .map_err(|e| e.to_string()),
+            Polyphony::Legato => writer
+                .write(xml::writer::XmlEvent::characters("legato"))
+                .map_err(|e| e.to_string()),
+            Polyphony::Poly => writer
+                .write(xml::writer::XmlEvent::characters("poly"))
+                .map_err(|e| e.to_string()),
+            Polyphony::Integer(x) => writer
+                .write(xml::writer::XmlEvent::characters(&x.to_string()))
+                .map_err(|e| e.to_string()),
         }
+    }
+    fn serialize_attributes(
+        &self,
+        attributes: Vec<xml::attribute::OwnedAttribute>,
+        namespace: xml::namespace::Namespace,
+    ) -> Result<
+        (
+            Vec<xml::attribute::OwnedAttribute>,
+            xml::namespace::Namespace,
+        ),
+        String,
+    > {
+        Ok((attributes, namespace))
     }
 }
 
-impl<'de> Deserialize<'de> for Polyphony {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let s = String::deserialize(deserializer)?;
-        match s.as_str() {
-            "auto" => Ok(Polyphony::Auto),
-            "mono" => Ok(Polyphony::Mono),
-            "legato" => Ok(Polyphony::Legato),
-            "poly" => Ok(Polyphony::Poly),
-            other => {
-                if let Ok(v) = other.parse::<u32>() {
-                    Ok(Polyphony::Integer(v))
-                } else {
-                    Err(serde::de::Error::custom(other.to_string()))
+impl yaserde::YaDeserialize for Polyphony {
+    fn deserialize<R: Read>(reader: &mut yaserde::de::Deserializer<R>) -> Result<Self, String> {
+        if let xml::reader::XmlEvent::Characters(s) = reader.peek()?.to_owned() {
+            match s.as_str() {
+                "auto" => Ok(Polyphony::Auto),
+                "mono" => Ok(Polyphony::Mono),
+                "legato" => Ok(Polyphony::Legato),
+                "poly" => Ok(Polyphony::Poly),
+                other => {
+                    if let Ok(v) = other.parse::<u32>() {
+                        Ok(Polyphony::Integer(v))
+                    } else {
+                        Err(other.to_string())
+                    }
                 }
             }
+        } else {
+            Err("Characters missing".to_string())
         }
     }
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
+#[yaserde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Sound {
+    #[yaserde(attribute,. rename = "firmwareVersion")]
+    firmware_version: Option<String>,
+    #[yaserde(attribute, rename = "earliestCompatibleFirmware")]
+    earliest_compatible_firmware: Option<String>,
     osc1: Osc,
     osc2: Osc,
+    #[yaserde(attribute)]
     polyphonic: Polyphony,
-    #[serde(default)]
-    clipping_amount: u32,
+    #[yaserde(attribute, rename = "clippingAmount")]
+    clipping_amount: Option<u32>,
+    #[yaserde(attribute, rename = "voicePriority")]
     voice_priority: u32,
     lfo1: Lfo,
     lfo2: Lfo,
+    #[yaserde(attribute)]
     mode: Mode,
+    #[yaserde(attribute, rename = "lpfMode")]
     lpf_mode: Option<LpfMode>,
     unison: Unison,
     delay: Delay,
     compressor: Option<Compressor>,
-    #[serde(rename = "modFXType")]
+    #[yaserde(attribute, rename = "modFXType")]
     mod_fx_type: ModFxType,
+    #[yaserde(rename = "defaultParams")]
     default_params: DefaultParams,
-    #[serde(default)]
+    arpeggiator: Arpeggiator,
+    #[yaserde(rename = "midiKnobs")]
     midi_knobs: MidiKnobs,
-    #[serde(default)]
+    #[yaserde(rename = "modKnobs")]
     mod_knobs: ModKnobs,
 }
 
 impl Default for Sound {
     fn default() -> Sound {
         Sound {
+            firmware_version: Some("3.1.3".to_string()),
+            earliest_compatible_firmware: Some("3.1.3-beta".to_string()),
             osc1: Osc::default(),
             osc2: Osc::default(),
             polyphonic: Polyphony::default(),
-            clipping_amount: 0,
+            clipping_amount: None,
             voice_priority: 1,
             lfo1: Lfo {
                 lfo_type: LfoType::Triangle,
-                sync_level: Some(7),
+                sync_level: Some(0),
             },
             lfo2: Lfo {
                 lfo_type: LfoType::Triangle,
@@ -679,14 +904,15 @@ impl Default for Sound {
             compressor: Some(Compressor::default()),
             mod_fx_type: ModFxType::default(),
             default_params: DefaultParams::default(),
+            arpeggiator: Arpeggiator::default(),
             midi_knobs: MidiKnobs::default(),
             mod_knobs: ModKnobs::default(),
         }
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
+#[yaserde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Synth {
     firmware_version: Option<String>,
@@ -696,13 +922,17 @@ pub struct Synth {
 
 impl Synth {
     pub fn to_xml(&self) -> String {
+        let yaserde_cfg = yaserde::ser::Config {
+            perform_indent: true,
+            ..Default::default()
+        };
         // serialize, and then remove the root
-        to_string(self)
+        to_string_with_config(self, &yaserde_cfg)
             .unwrap()
-            .replace("<synth>\n", "")
-            .replace("<synth>", "")
-            .replace("</synth>\n", "")
-            .replace("</synth>", "")
+            .replace("<Synth>\n", "")
+            .replace("<Synth>", "")
+            .replace("</Synth>\n", "")
+            .replace("</Synth>", "")
     }
 }
 
@@ -742,10 +972,10 @@ mod tests {
 
     #[test]
     fn test_lfo_type() {
-        let s = "<type>sine</type>";
-        let expected = LfoType::Sine;
-        let parsed: LfoType = from_str(&s).unwrap();
-        assert_eq!(parsed, expected);
+        let xml = "<type>sine</type>";
+        let value = LfoType::Sine;
+        let parsed: LfoType = from_str(&xml).unwrap();
+        assert_eq!(parsed, value);
     }
 
     #[test]
@@ -761,7 +991,7 @@ mod tests {
 
     #[test]
     fn test_envelope() {
-        let s = "<envelope1><attack>0x80000000</attack><decay>0xE6666654</decay><sustain>0x7FFFFFFF</sustain><release>0x80000000</release></envelope1>";
+        let s = "<envelope1 attack=\"0x80000000\" decay=\"0xE6666654\" sustain=\"0x7FFFFFFF\" release=\"0x80000000\"></envelope1>";
         let expected = Envelope {
             attack: Value(0x80000000),
             decay: Value(0xE6666654),
@@ -774,7 +1004,7 @@ mod tests {
 
     #[test]
     fn test_patch_cable() {
-        let s = "<patchCable><source>velocity</source><destination>volume</destination><amount>0x3FFFFFE8</amount></patchCable>";
+        let s = "<patchCable source=\"velocity\" destination=\"volume\" amount=\"0x3FFFFFE8\"></patchCable>";
         let expected = PatchCable {
             source: Source::Velocity,
             destination: Destination::Volume,
@@ -786,7 +1016,7 @@ mod tests {
 
     #[test]
     fn test_patch_cables() {
-        let s = "<patchCables><patchCable><source>velocity</source><destination>volume</destination><amount>0x3FFFFFE8</amount></patchCable></patchCables>";
+        let s = "<patchCables><patchCable source=\"velocity\" destination=\"volume\" amount=\"0x3FFFFFE8\"></patchCable></patchCables>";
         let expected = PatchCables {
             patch_cable: vec![PatchCable {
                 source: Source::Velocity,
@@ -816,6 +1046,9 @@ mod tests {
             .unwrap();
         assert_eq!(synth.sound.osc2.osc_type, OscType::Saw);
         println!("{:?}", synth);
-        println!("{:?}", synth.to_xml());
+        let s = synth.to_xml();
+        for line in s.lines() {
+            println!("{}", line);
+        }
     }
 }
