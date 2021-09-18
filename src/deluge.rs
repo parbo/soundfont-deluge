@@ -36,6 +36,7 @@ pub enum OscType {
     AnalogSquare,
     InLeft,
     InRight,
+    Sample,
     Saw,
     Sine,
     Square,
@@ -50,14 +51,47 @@ impl Default for OscType {
 
 #[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct Zone {
+    start_sample_pos: u32,
+    end_sample_pos: u32,
+    start_loop_pos: Option<u32>,
+    end_loop_pos: Option<u32>,
+}
+
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SampleRange {
+    range_top_note: Option<i32>,
+    transpose: Option<i32>,
+    cents: Option<i32>,
+    file_name: String,
+    zone: Zone,
+}
+
+#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[builder(default)]
+pub struct SampleRanges {
+    sample_range: Vec<SampleRange>,
+}
+
+#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Osc {
     #[serde(rename = "type", default)]
     osc_type: OscType,
-    transpose: i32,
-    cents: i32,
-    #[serde(default)]
-    retrig_phase: i32,
+    transpose: Option<i32>,
+    cents: Option<i32>,
+    // TODO: make separate datatypes for each oscillator type instead of having Option
+    // Regular wave oscillators
+    retrig_phase: Option<i32>,
+    // Sample oscillator
+    loop_mode: Option<i32>,
+    reversed: Option<i32>,
+    time_stretch_enable: Option<i32>,
+    time_stretch_amount: Option<i32>,
+    sample_ranges: Option<SampleRanges>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
@@ -80,8 +114,7 @@ impl Default for LfoType {
 pub struct Lfo {
     #[serde(rename = "type")]
     lfo_type: LfoType,
-    #[serde(default)]
-    sync_level: i32,
+    sync_level: Option<i32>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
@@ -97,14 +130,20 @@ impl Default for Mode {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Unison {
     num: i32,
     detune: i32,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+impl Default for Unison {
+    fn default() -> Unison {
+        Unison { num: 1, detune: 8 }
+    }
+}
+
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Delay {
@@ -113,11 +152,50 @@ pub struct Delay {
     sync_level: i32,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+impl Default for Delay {
+    fn default() -> Delay {
+        Delay {
+            ping_pong: 1,
+            analog: 0,
+            sync_level: 7,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum LpfMode {
     Mode24dB,
     Mode24dBDrive,
     Mode12dB,
+}
+
+// Need custom one for this since identifiers can't start with numbers
+impl Serialize for LpfMode {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match *self {
+            LpfMode::Mode24dB => serializer.serialize_str("24dB"),
+            LpfMode::Mode24dBDrive => serializer.serialize_str("24dBDrive"),
+            LpfMode::Mode12dB => serializer.serialize_str("12dB"),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LpfMode {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        match s.as_str() {
+            "24dB" => Ok(LpfMode::Mode24dB),
+            "24dBDrive" => Ok(LpfMode::Mode24dBDrive),
+            "12dB" => Ok(LpfMode::Mode12dB),
+            other => Err(serde::de::Error::custom(other.to_string())),
+        }
+    }
 }
 
 impl Default for LpfMode {
@@ -233,6 +311,25 @@ pub struct Equalizer {
     treble_frequency: Value,
 }
 
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[builder(default)]
+pub struct Compressor {
+    sync_level: i32,
+    attack: i32,
+    release: i32,
+}
+
+impl Default for Compressor {
+    fn default() -> Compressor {
+        Compressor {
+            sync_level: 7,
+            attack: 327244,
+            release: 936,
+        }
+    }
+}
+
 #[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[builder(default)]
@@ -240,7 +337,7 @@ pub struct PatchCables {
     patch_cable: Vec<PatchCable>,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct DefaultParams {
@@ -287,6 +384,68 @@ pub struct DefaultParams {
     mod_fx_feedback: Value,
 }
 
+// Values from saved init patch (Init.xml)
+impl Default for DefaultParams {
+    fn default() -> DefaultParams {
+        let volume = PatchCable {
+            source: Source::Velocity,
+            destination: Destination::Volume,
+            amount: Value(0x3FFFFFE8),
+        };
+        DefaultParams {
+            arpeggiator_gate: Value(0x00000000),
+            portamento: Value(0x80000000),
+            compressor_shape: Value(0xDC28F5B2),
+            osc_a_volume: Value(0x7FFFFFFF),
+            osc_a_pulse_width: Value(0x00000000),
+            osc_b_volume: Value(0x80000000),
+            osc_b_pulse_width: Value(0x00000000),
+            noise_volume: Value(0x80000000),
+            volume: Value(0x4CCCCCA8),
+            pan: Value(0x00000000),
+            lpf_frequency: Value(0x7FFFFFFF),
+            lpf_resonance: Value(0x80000000),
+            hpf_frequency: Value(0x80000000),
+            hpf_resonance: Value(0x80000000),
+            envelope_1: Envelope {
+                attack: Value(0x80000000),
+                decay: Value(0xE6666654),
+                sustain: Value(0x7FFFFFFF),
+                release: Value(0x80000000),
+            },
+            envelope_2: Envelope {
+                attack: Value(0xE6666654),
+                decay: Value(0xE6666654),
+                sustain: Value(0xFFFFFFE9),
+                release: Value(0xE6666654),
+            },
+            lfo_1_rate: Value(0x1999997E),
+            lfo_2_rate: Value(0x00000000),
+            modulator_1_amount: Value(0x80000000),
+            modulator_1_feedback: Value(0x80000000),
+            modulator_2_amount: Value(0x80000000),
+            modulator_2_feedback: Value(0x80000000),
+            carrier_1_feedback: Value(0x80000000),
+            carrier_2_feedback: Value(0x80000000),
+            mod_fx_rate: Value(0x80000000),
+            mod_fx_depth: Value(0x80000000),
+            delay_rate: Value(0x00000000),
+            delay_feedback: Value(0x80000000),
+            reverb_amount: Value(0x80000000),
+            arpeggiator_rate: Value(0x00000000),
+            patch_cables: PatchCables {
+                patch_cable: vec![volume],
+            },
+            stutter_rate: Value(0x00000000),
+            sample_rate_reduction: Value(0x80000000),
+            bit_crush: Value(0x80000000),
+            equalizer: Equalizer::default(),
+            mod_fx_offset: Value(0x00000000),
+            mod_fx_feedback: Value(0x00000000),
+        }
+    }
+}
+
 #[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct MidiKnob {}
@@ -306,12 +465,114 @@ pub struct ModKnob {
     patch_amount_from_source: Option<Source>,
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct ModKnobs {
     #[serde(default)]
     mod_knob: Vec<ModKnob>,
+}
+
+impl Default for ModKnobs {
+    fn default() -> ModKnobs {
+        ModKnobs {
+            mod_knob: vec![
+                ModKnob {
+                    controls_param: Destination::Pan,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::VolumePostFx,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::LpfResonance,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::LpfFrequency,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::Env1Release,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::Env1Attack,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::DelayFeedback,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::DelayRate,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::ReverbAmount,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::VolumePostReverbSend,
+                    patch_amount_from_source: Some(Source::Compressor),
+                },
+                ModKnob {
+                    controls_param: Destination::Pitch,
+                    patch_amount_from_source: Some(Source::Lfo1),
+                },
+                ModKnob {
+                    controls_param: Destination::Lfo1Rate,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::Portamento,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::StutterRate,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::BitcrushAmount,
+                    patch_amount_from_source: None,
+                },
+                ModKnob {
+                    controls_param: Destination::SampleRateReduction,
+                    patch_amount_from_source: None,
+                },
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, serde_enum)]
+pub enum ArpeggiatorMode {
+    Off,
+}
+
+impl Default for ArpeggiatorMode {
+    fn default() -> ArpeggiatorMode {
+        ArpeggiatorMode::Off
+    }
+}
+
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[builder(default)]
+pub struct Arpeggiator {
+    mode: ArpeggiatorMode,
+    num_octaves: i32,
+    sync_level: i32,
+}
+
+impl Default for Arpeggiator {
+    fn default() -> Arpeggiator {
+        Arpeggiator {
+            mode: ArpeggiatorMode::Off,
+            num_octaves: 2,
+            sync_level: 7,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -325,7 +586,7 @@ pub enum Polyphony {
 
 impl Default for Polyphony {
     fn default() -> Polyphony {
-        Polyphony::Auto
+        Polyphony::Poly
     }
 }
 
@@ -366,7 +627,7 @@ impl<'de> Deserialize<'de> for Polyphony {
     }
 }
 
-#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[builder(default)]
 pub struct Sound {
@@ -379,8 +640,10 @@ pub struct Sound {
     lfo1: Lfo,
     lfo2: Lfo,
     mode: Mode,
+    lpf_mode: Option<LpfMode>,
     unison: Unison,
     delay: Delay,
+    compressor: Option<Compressor>,
     #[serde(rename = "modFXType")]
     mod_fx_type: ModFxType,
     default_params: DefaultParams,
@@ -388,6 +651,35 @@ pub struct Sound {
     midi_knobs: MidiKnobs,
     #[serde(default)]
     mod_knobs: ModKnobs,
+}
+
+impl Default for Sound {
+    fn default() -> Sound {
+        Sound {
+            osc1: Osc::default(),
+            osc2: Osc::default(),
+            polyphonic: Polyphony::default(),
+            clipping_amount: 0,
+            voice_priority: 1,
+            lfo1: Lfo {
+                lfo_type: LfoType::Triangle,
+                sync_level: Some(7),
+            },
+            lfo2: Lfo {
+                lfo_type: LfoType::Triangle,
+                sync_level: None,
+            },
+            mode: Mode::default(),
+            lpf_mode: Some(LpfMode::default()),
+            unison: Unison::default(),
+            delay: Delay::default(),
+            compressor: Some(Compressor::default()),
+            mod_fx_type: ModFxType::default(),
+            default_params: DefaultParams::default(),
+            midi_knobs: MidiKnobs::default(),
+            mod_knobs: ModKnobs::default(),
+        }
+    }
 }
 
 #[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -422,12 +714,13 @@ mod tests {
     #[test]
     fn test_osc() {
         let s = "<osc1><type>saw</type><transpose>0</transpose><cents>0</cents><retrigPhase>-1</retrigPhase></osc1>";
-        let expected = Osc {
-            osc_type: OscType::Saw,
-            transpose: 0,
-            cents: 0,
-            retrig_phase: -1,
-        };
+        let expected = OscBuilder::default()
+            .osc_type(OscType::Saw)
+            .transpose(0)
+            .cents(0)
+            .retrig_phase(Some(-1))
+            .build()
+            .unwrap();
         let parsed: Osc = from_str(&s).unwrap();
         assert_eq!(parsed, expected);
     }
@@ -445,7 +738,7 @@ mod tests {
         let s = "<lfo1><type>triangle</type><syncLevel>0</syncLevel></lfo1>";
         let expected = Lfo {
             lfo_type: LfoType::Triangle,
-            sync_level: 0,
+            sync_level: Some(0),
         };
         let parsed: Lfo = from_str(&s).unwrap();
         assert_eq!(parsed, expected);
