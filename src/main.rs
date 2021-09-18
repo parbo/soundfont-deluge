@@ -14,9 +14,6 @@ use std::path::Path;
 
 fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     info!("Writing xml to {} for {}", folder.display(), ix);
-    let mut synth_builder = deluge::SynthBuilder::default();
-    synth_builder.firmware_version(Some("3.1.3".to_string()));
-    synth_builder.earliest_compatible_firmware(Some("3.1.0-beta".to_string()));
     let is_last = ix == sf.presets.len() - 1;
     let preset = &sf.presets[ix];
     info!("Preset: {}", preset.name);
@@ -112,6 +109,8 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
 
     // Write out the first two
     let mut sound_builder = deluge::SoundBuilder::default();
+    sound_builder.firmware_version(Some("3.1.3".to_string()));
+    sound_builder.earliest_compatible_firmware(Some("3.1.0-beta".to_string()));
     let mut ix = 0;
     let num = oscs.len();
     for osc in &oscs[0..std::cmp::min(num, 2)] {
@@ -153,6 +152,9 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
         }
         let osc = deluge::OscBuilder::default()
             .osc_type(deluge::OscType::Sample)
+            .transpose(None)
+            .cents(None)
+            .retrig_phase(None)
             .loop_mode(Some(0))
             .reversed(Some(0))
             .time_stretch_enable(Some(0))
@@ -171,10 +173,9 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
             sound_builder.osc2(osc);
         }
     }
-    synth_builder.sound(sound_builder.build().unwrap());
-    let synth = synth_builder.build().unwrap();
+    let sound = sound_builder.build().unwrap();
 
-    let xml = synth.to_xml();
+    let xml = sound.to_xml();
     fs::create_dir_all(folder).unwrap();
     let file_name = SoundFont::safe_name(&preset.name) + ".xml";
     fs::write(folder.join(Path::new(&file_name)), xml).unwrap();
@@ -321,7 +322,7 @@ fn main() {
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     if filename.to_lowercase().ends_with(".xml") {
-        let synth = deluge::parse_synth(&mut file);
+        let synth = deluge::Sound::from_xml(&mut file);
         if matches.is_present("DUMP") {
             println!("dumping");
             println!("{:?}", synth);

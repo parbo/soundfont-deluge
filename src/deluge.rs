@@ -10,7 +10,7 @@ pub struct Value(u32);
 
 impl yaserde::YaSerialize for Value {
     fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
-        let s = format!("0x{:08x}", self.0);
+        let s = format!("0x{:08X}", self.0);
         let _ret = writer.write(xml::writer::XmlEvent::characters(&s));
         Ok(())
     }
@@ -79,18 +79,26 @@ impl Default for OscType {
 #[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct Zone {
+    #[yaserde(attribute, rename = "startSamplePos")]
     start_sample_pos: u32,
+    #[yaserde(attribute, rename = "endSamplePos")]
     end_sample_pos: u32,
+    #[yaserde(attribute, rename = "startLoopPos")]
     start_loop_pos: Option<u32>,
+    #[yaserde(attribute, rename = "endLoopPos")]
     end_loop_pos: Option<u32>,
 }
 
 #[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct SampleRange {
+    #[yaserde(attribute, rename = "rangeTopNote")]
     range_top_note: Option<i32>,
+    #[yaserde(attribute)]
     transpose: Option<i32>,
+    #[yaserde(attribute)]
     cents: Option<i32>,
+    #[yaserde(attribute, rename = "fileName")]
     file_name: String,
     zone: Zone,
 }
@@ -98,6 +106,7 @@ pub struct SampleRange {
 #[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
 #[builder(default)]
 pub struct SampleRanges {
+    #[yaserde(rename = "sampleRange")]
     sample_range: Vec<SampleRange>,
 }
 
@@ -844,7 +853,7 @@ impl yaserde::YaDeserialize for Polyphony {
 }
 
 #[derive(Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
-#[yaserde(rename_all = "camelCase")]
+#[yaserde(rename = "sound")]
 #[builder(default)]
 pub struct Sound {
     #[yaserde(attribute,. rename = "firmwareVersion")]
@@ -911,37 +920,22 @@ impl Default for Sound {
     }
 }
 
-#[derive(Default, Clone, Builder, YaSerialize, YaDeserialize, Debug, Eq, PartialEq)]
-#[yaserde(rename_all = "camelCase")]
-#[builder(default)]
-pub struct Synth {
-    firmware_version: Option<String>,
-    earliest_compatible_firmware: Option<String>,
-    sound: Sound,
-}
-
-impl Synth {
+impl Sound {
     pub fn to_xml(&self) -> String {
         let yaserde_cfg = yaserde::ser::Config {
             perform_indent: true,
             ..Default::default()
         };
-        // serialize, and then remove the root
+        // serialize
         to_string_with_config(self, &yaserde_cfg)
             .unwrap()
-            .replace("<Synth>\n", "")
-            .replace("<Synth>", "")
-            .replace("</Synth>\n", "")
-            .replace("</Synth>", "")
     }
-}
 
-pub fn parse_synth(file: &mut fs::File) -> Synth {
-    // Deluge xml files don't have a root node, so add one
-    let mut s = "<synth>\n".to_string();
-    let _ = file.read_to_string(&mut s).unwrap();
-    s.push_str("\n</synth>\n");
-    from_str(&s).unwrap()
+    pub fn from_xml(file: &mut fs::File) -> Sound {
+	let mut s = String::new();
+	let _ = file.read_to_string(&mut s).unwrap();
+	from_str(&s).unwrap()
+    }
 }
 
 #[cfg(test)]
@@ -1029,24 +1023,19 @@ mod tests {
     }
 
     #[test]
-    fn test_build_synth() {
-        let synth = SynthBuilder::default()
-            .sound(
-                SoundBuilder::default()
-                    .osc2(
-                        OscBuilder::default()
-                            .osc_type(OscType::Saw)
-                            .build()
-                            .unwrap(),
-                    )
+    fn test_build_sound() {
+        let sound = SoundBuilder::default()
+            .osc2(
+                OscBuilder::default()
+                    .osc_type(OscType::Saw)
                     .build()
                     .unwrap(),
             )
             .build()
             .unwrap();
-        assert_eq!(synth.sound.osc2.osc_type, OscType::Saw);
-        println!("{:?}", synth);
-        let s = synth.to_xml();
+        assert_eq!(sound.osc2.osc_type, OscType::Saw);
+        println!("{:?}", sound);
+        let s = sound.to_xml();
         for line in s.lines() {
             println!("{}", line);
         }
