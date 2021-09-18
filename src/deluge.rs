@@ -1,6 +1,7 @@
 use deluge_macros::serde_enum;
 use derive_builder::Builder;
 use quick_xml::de::from_str;
+use quick_xml::se::to_string;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fs;
 use std::io::Read;
@@ -51,6 +52,7 @@ impl Default for OscType {
 
 #[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[builder(default)]
 pub struct Zone {
     start_sample_pos: u32,
     end_sample_pos: u32,
@@ -58,8 +60,9 @@ pub struct Zone {
     end_loop_pos: Option<u32>,
 }
 
-#[derive(Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Default, Clone, Builder, Serialize, Deserialize, Debug, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[builder(default)]
 pub struct SampleRange {
     range_top_note: Option<i32>,
     transpose: Option<i32>,
@@ -200,7 +203,7 @@ impl<'de> Deserialize<'de> for LpfMode {
 
 impl Default for LpfMode {
     fn default() -> LpfMode {
-        LpfMode::Mode24dBDrive
+        LpfMode::Mode24dB
     }
 }
 
@@ -691,11 +694,23 @@ pub struct Synth {
     sound: Sound,
 }
 
+impl Synth {
+    pub fn to_xml(&self) -> String {
+        // serialize, and then remove the root
+        to_string(self)
+            .unwrap()
+            .replace("<synth>\n", "")
+            .replace("<synth>", "")
+            .replace("</synth>\n", "")
+            .replace("</synth>", "")
+    }
+}
+
 pub fn parse_synth(file: &mut fs::File) -> Synth {
     // Deluge xml files don't have a root node, so add one
-    let mut s = "<doc>\n".to_string();
+    let mut s = "<synth>\n".to_string();
     let _ = file.read_to_string(&mut s).unwrap();
-    s.push_str("\n</doc>\n");
+    s.push_str("\n</synth>\n");
     from_str(&s).unwrap()
 }
 
@@ -716,8 +731,8 @@ mod tests {
         let s = "<osc1><type>saw</type><transpose>0</transpose><cents>0</cents><retrigPhase>-1</retrigPhase></osc1>";
         let expected = OscBuilder::default()
             .osc_type(OscType::Saw)
-            .transpose(0)
-            .cents(0)
+            .transpose(Some(0))
+            .cents(Some(0))
             .retrig_phase(Some(-1))
             .build()
             .unwrap();
@@ -801,5 +816,6 @@ mod tests {
             .unwrap();
         assert_eq!(synth.sound.osc2.osc_type, OscType::Saw);
         println!("{:?}", synth);
+        println!("{:?}", synth.to_xml());
     }
 }

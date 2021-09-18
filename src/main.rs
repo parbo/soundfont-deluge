@@ -7,20 +7,12 @@ use soundfont::{Generator, SoundFont};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-use xmlwriter::*;
 
 fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     info!("Writing xml to {} for {}", folder.display(), ix);
-    let mut w = XmlWriter::new(Options::default());
-    w.write_declaration();
-    w.start_element("sound");
-    w.write_attribute("firmwareVersion", "3.1.3");
-    w.write_attribute("earliestCompatibleFirmware", "3.1.0-beta");
-    w.write_attribute("polyphonic", "poly");
-    w.write_attribute("voicePriority", "1");
-    w.write_attribute("mode", "subtractive");
-    w.write_attribute("lpfMode", "24dB");
-    w.write_attribute("modFxType", "none");
+    let mut synth_builder = deluge::SynthBuilder::default();
+    synth_builder.firmware_version(Some("3.1.3".to_string()));
+    synth_builder.earliest_compatible_firmware(Some("3.1.0-beta".to_string()));
     let is_last = ix == sf.presets.len() - 1;
     let preset = &sf.presets[ix];
     info!("Preset: {}", preset.name);
@@ -115,30 +107,24 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     }
 
     // Write out the first two
+    let mut sound_builder = deluge::SoundBuilder::default();
     let mut ix = 0;
     let num = oscs.len();
     for osc in &oscs[0..std::cmp::min(num, 2)] {
         ix = ix + 1;
-        w.start_element(&format!("osc{}", ix));
-        w.write_attribute("type", "sample");
-        w.write_attribute("loopMode", "0");
-        w.write_attribute("reversed", "0");
-        w.write_attribute("timeStretchEnable", "0");
-        w.write_attribute("timeStretchAmount", "0");
-        w.start_element("sampleRanges");
+        let mut sample_ranges = vec![];
         for (o, _vel_range, _attack, _decay) in osc {
-            w.start_element("sampleRange");
+            let mut sample_range_builder = deluge::SampleRangeBuilder::default();
             if let Some(Generator::KeyRange(_low, high)) = get_zone_key_range(&zones[*o]) {
-                w.write_attribute("rangeTopNote", &high.to_string());
+                sample_range_builder.range_top_note(Some(high.into()));
             }
             if let Some(Generator::OverridingRootKey(root)) =
                 get_zone_overriding_root_key(&zones[*o])
             {
-                // offset from middle c
-                w.write_attribute("transpose", &(60 - root).to_string())
+                sample_range_builder.transpose(Some((60 - root).into()));
             }
             if let Some(Generator::FineTune(cents)) = get_zone_fine_tune(&zones[*o]) {
-                w.write_attribute("cents", &cents.to_string())
+                sample_range_builder.cents(Some(cents.into()));
             }
             if let Some(Generator::SampleID(sample_id)) = get_zone_sample(&zones[*o]) {
                 let sample = &sf.samples[sample_id as usize];
@@ -148,20 +134,43 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
                     .components()
                     .map(|x| x.as_os_str().to_str().unwrap().into())
                     .collect();
-                w.write_attribute("fileName", &file_path.join("/"));
-                w.start_element("zone");
+                sample_range_builder.file_name(file_path.join("/"));
                 // TODO: take generator sample offsets into account
-                w.write_attribute("startSamplePos", "0");
-                w.write_attribute("endSamplePos", &(sample.end - sample.start).to_string());
-                w.end_element();
+                // TODO: use loop points
+                sample_range_builder.zone(
+                    deluge::ZoneBuilder::default()
+                        .end_sample_pos(sample.end - sample.start)
+                        .build()
+                        .unwrap(),
+                );
             }
-            w.end_element();
+            let sample_range = sample_range_builder.build().unwrap();
+            sample_ranges.push(sample_range);
         }
-        w.end_element();
-        w.end_element();
+        let osc = deluge::OscBuilder::default()
+            .osc_type(deluge::OscType::Sample)
+            .loop_mode(Some(0))
+            .reversed(Some(0))
+            .time_stretch_enable(Some(0))
+            .time_stretch_amount(Some(0))
+            .sample_ranges(Some(
+                deluge::SampleRangesBuilder::default()
+                    .sample_range(sample_ranges)
+                    .build()
+                    .unwrap(),
+            ))
+            .build()
+            .unwrap();
+        if ix == 1 {
+            sound_builder.osc1(osc);
+        } else {
+            sound_builder.osc2(osc);
+        }
     }
-    w.end_element();
-    let xml = w.end_document();
+    synth_builder.sound(sound_builder.build().unwrap());
+    let synth = synth_builder.build().unwrap();
+
+    let xml = synth.to_xml();
     fs::create_dir_all(folder).unwrap();
     let file_name = SoundFont::safe_name(&preset.name) + ".xml";
     fs::write(folder.join(Path::new(&file_name)), xml).unwrap();
@@ -308,11 +317,11 @@ fn main() {
     let mut file = fs::File::open(Path::new(filename)).unwrap();
 
     if filename.to_lowercase().ends_with(".xml") {
-	let synth = deluge::parse_synth(&mut file);
+        let synth = deluge::parse_synth(&mut file);
         if matches.is_present("DUMP") {
             println!("dumping");
-	    println!("{:?}", synth);
-	}
+            println!("{:?}", synth);
+        }
     } else {
         let sf = SoundFont::parse_soundfont(&mut file);
         if matches.is_present("DUMP") {
