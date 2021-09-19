@@ -99,7 +99,7 @@ pub struct SampleRange {
     #[yaserde(attribute)]
     cents: Option<i32>,
     #[yaserde(attribute, rename = "fileName")]
-    file_name: String,
+    file_name: Option<String>,
     zone: Zone,
 }
 
@@ -124,6 +124,8 @@ pub struct Osc {
     #[yaserde(attribute, rename = "retrigPhase")]
     retrig_phase: Option<i32>,
     // Sample oscillator
+    #[yaserde(attribute, rename = "fileName")]
+    file_name: Option<String>,
     #[yaserde(attribute, rename = "loopMode")]
     loop_mode: Option<i32>,
     #[yaserde(attribute, rename = "reversed")]
@@ -134,6 +136,7 @@ pub struct Osc {
     time_stretch_amount: Option<i32>,
     #[yaserde(rename = "sampleRanges")]
     sample_ranges: Option<SampleRanges>,
+    zone: Option<Zone>,
 }
 
 impl Default for Osc {
@@ -143,11 +146,13 @@ impl Default for Osc {
             transpose: Some(0),
             cents: Some(0),
             retrig_phase: Some(-1),
+            file_name: None,
             loop_mode: None,
             reversed: None,
             time_stretch_enable: None,
             time_stretch_amount: None,
             sample_ranges: None,
+            zone: None,
         }
     }
 }
@@ -927,14 +932,13 @@ impl Sound {
             ..Default::default()
         };
         // serialize
-        to_string_with_config(self, &yaserde_cfg)
-            .unwrap()
+        to_string_with_config(self, &yaserde_cfg).unwrap()
     }
 
     pub fn from_xml(file: &mut fs::File) -> Sound {
-	let mut s = String::new();
-	let _ = file.read_to_string(&mut s).unwrap();
-	from_str(&s).unwrap()
+        let mut s = String::new();
+        let _ = file.read_to_string(&mut s).unwrap();
+        from_str(&s).unwrap()
     }
 }
 

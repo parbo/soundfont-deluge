@@ -6,13 +6,13 @@ mod deluge;
 mod soundfont;
 
 use clap::{App, Arg};
-use log::info;
-use soundfont::{Generator, SoundFont};
+use log::{info, warn};
+use soundfont::{Generator, LoopMode, SoundFont};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
+fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, prefix: &str) {
     info!("Writing xml to {} for {}", folder.display(), ix);
     let is_last = ix == sf.presets.len() - 1;
     let preset = &sf.presets[ix];
@@ -49,7 +49,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     let mut oscs = vec![];
     let mut taken = HashSet::new();
     loop {
-        let mut osc = vec![];
+        let mut osc = (LoopMode::NoLoop, vec![]);
         // Find next adjacent
         loop {
             let mut found = false;
@@ -58,39 +58,38 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
                     continue;
                 }
                 let zone = &zones[zone_ix];
-                if let Some(Generator::KeyRange(low, _high)) = get_zone_key_range(zone) {
-                    let mut with_velrange = None;
-                    if let Some(Generator::VelRange(low, high)) = get_zone_vel_range(zone) {
-                        if low == 0 {
-                            with_velrange = Some("low");
-                        } else if high == 127 {
-                            with_velrange = Some("high");
-                        } else {
-                            with_velrange = Some("other");
-                        }
+                if let Some(Generator::SampleModes(loop_mode)) = get_zone_sample_mode(zone) {
+                    osc.0 = loop_mode;
+                }
+                if let Some(Generator::KeyRange(low, high)) = get_zone_key_range(zone) {
+                    let mut sample_name = None;
+                    if let Some(Generator::SampleID(sample_id)) = get_zone_sample(zone) {
+                        let sample = &sf.samples[sample_id as usize];
+                        sample_name = Some(sample.name.clone());
                     }
-                    let mut with_attack = None;
-                    if let Some(Generator::AttackVolEnv(vol)) = get_zone_attack(zone) {
-                        with_attack = Some(f32::powf(2.0, (vol as f32 - 12000.0) / 1200.0));
+                    // TODO: check fine tune too
+                    let mut root_note = None;
+                    if let Some(Generator::OverridingRootKey(root)) =
+                        get_zone_overriding_root_key(zone)
+                    {
+                        root_note = Some(root);
                     }
-                    let mut with_decay = None;
-                    if let Some(Generator::DecayVolEnv(vol)) = get_zone_decay(zone) {
-                        with_decay = Some(f32::powf(2.0, (vol as f32 - 12000.0) / 1200.0));
-                    }
-                    if osc.len() == 0 {
-                        osc.push((zone_ix, with_velrange, with_attack, with_decay));
+                    if osc.1.len() == 0 {
+                        osc.1.push((zone_ix, low, high, sample_name, root_note));
                         taken.insert(zone_ix);
                         found = true;
                     } else {
-                        let (prev_zone, _prev_velrange, _prev_attack, _prev_decay) =
-                            osc.last().unwrap();
-                        if let Some(Generator::KeyRange(_plow, phigh)) =
-                            get_zone_key_range(&zones[*prev_zone])
-                        {
-                            if phigh + 1 == low {
-                                osc.push((zone_ix, with_velrange, with_attack, with_decay));
-                                taken.insert(zone_ix);
-                                found = true;
+                        let (_prev_zone, _prev_low, prev_high, prev_sample_name, prev_root_note) =
+                            osc.1.last_mut().unwrap();
+                        if *prev_high + 1 == low {
+                            taken.insert(zone_ix);
+                            found = true;
+                            if sample_name != *prev_sample_name || root_note != *prev_root_note {
+                                // Add the new sample
+                                osc.1.push((zone_ix, low, high, sample_name, root_note));
+                            } else {
+                                // Just extend previous range. In soundfonts, each range can have different params, but in deluge they can't.
+                                *prev_high = high;
                             }
                         }
                     }
@@ -100,10 +99,10 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
                 break;
             }
         }
-        info!("osc: {:?}", osc);
-        if osc.len() == 0 {
+        if osc.1.len() == 0 {
             break;
         }
+        info!("osc: {:?}", osc);
         oscs.push(osc);
     }
 
@@ -114,21 +113,55 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
     let mut default_params_builder = deluge::DefaultParamsBuilder::default();
     let mut ix = 0;
     let num = oscs.len();
-    for osc in &oscs[0..std::cmp::min(num, 2)] {
+    if num > 2 {
+        warn!(
+            "{} has more osc than the deluge has, need to select",
+            preset.name
+        );
+    }
+    for (loop_mode, osc) in &oscs[0..std::cmp::min(num, 2)] {
         ix = ix + 1;
+        let mut osc_builder = deluge::OscBuilder::default();
+        osc_builder
+            .osc_type(deluge::OscType::Sample)
+            .transpose(None)
+            .cents(None)
+            .retrig_phase(None)
+            .reversed(Some(0))
+            .time_stretch_enable(Some(0))
+            .time_stretch_amount(Some(0));
+        match loop_mode {
+            LoopMode::NoLoop => {}
+            LoopMode::ContinuousLoop => {
+                osc_builder.loop_mode(Some(2));
+            }
+            LoopMode::ReleaseLoop => {
+                osc_builder.loop_mode(Some(2));
+            }
+        }
+        let single_sample = osc.len() == 1;
         let mut sample_ranges = vec![];
-        for (o, _vel_range, _attack, _decay) in osc {
+        for (ix, (o, _low, high, _sample_name, _root)) in osc.iter().enumerate() {
             let mut sample_range_builder = deluge::SampleRangeBuilder::default();
-            if let Some(Generator::KeyRange(_low, high)) = get_zone_key_range(&zones[*o]) {
-                sample_range_builder.range_top_note(Some(high.into()));
+            // The last sample must _not_ have range_top_note!
+            if ix != osc.len() - 1 {
+                sample_range_builder.range_top_note(Some(*high as i32));
             }
             if let Some(Generator::OverridingRootKey(root)) =
                 get_zone_overriding_root_key(&zones[*o])
             {
-                sample_range_builder.transpose(Some((60 - root).into()));
+                if single_sample {
+                    osc_builder.transpose(Some((60 - root).into()));
+                } else {
+                    sample_range_builder.transpose(Some((60 - root).into()));
+                }
             }
             if let Some(Generator::FineTune(cents)) = get_zone_fine_tune(&zones[*o]) {
-                sample_range_builder.cents(Some(cents.into()));
+                if single_sample {
+                    osc_builder.cents(Some(cents.into()));
+                } else {
+                    sample_range_builder.cents(Some(cents.into()));
+                }
             }
             if let Some(Generator::SampleID(sample_id)) = get_zone_sample(&zones[*o]) {
                 let sample = &sf.samples[sample_id as usize];
@@ -138,56 +171,79 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize) {
                     .components()
                     .map(|x| x.as_os_str().to_str().unwrap().into())
                     .collect();
-                sample_range_builder.file_name(file_path.join("/"));
+                if single_sample {
+                    osc_builder.file_name(Some(file_path.join("/")));
+                } else {
+                    sample_range_builder.file_name(Some(file_path.join("/")));
+                }
                 // TODO: take generator sample offsets into account
-                // TODO: use loop points
-                sample_range_builder.zone(
-                    deluge::ZoneBuilder::default()
-                        .end_sample_pos(sample.end - sample.start)
-                        .build()
-                        .unwrap(),
-                );
+                let mut zone_builder = deluge::ZoneBuilder::default();
+                zone_builder.end_sample_pos(sample.end - sample.start);
+                if *loop_mode != LoopMode::NoLoop {
+                    zone_builder.start_loop_pos(Some(sample.start_loop - sample.start));
+                    zone_builder.end_loop_pos(Some(sample.end_loop - sample.start));
+                }
+                if single_sample {
+                    osc_builder.zone(Some(zone_builder.build().unwrap()));
+                } else {
+                    sample_range_builder.zone(zone_builder.build().unwrap());
+                }
             }
-            let sample_range = sample_range_builder.build().unwrap();
-            sample_ranges.push(sample_range);
+            if !single_sample {
+                let sample_range = sample_range_builder.build().unwrap();
+                sample_ranges.push(sample_range);
+            }
         }
-        let osc = deluge::OscBuilder::default()
-            .osc_type(deluge::OscType::Sample)
-            .transpose(None)
-            .cents(None)
-            .retrig_phase(None)
-            .loop_mode(Some(0))
-            .reversed(Some(0))
-            .time_stretch_enable(Some(0))
-            .time_stretch_amount(Some(0))
-            .sample_ranges(Some(
+        if !single_sample {
+            osc_builder.sample_ranges(Some(
                 deluge::SampleRangesBuilder::default()
                     .sample_range(sample_ranges)
                     .build()
                     .unwrap(),
-            ))
-            .build()
-            .unwrap();
+            ));
+        }
+        let osc = osc_builder.build().unwrap();
         if ix == 1 {
             sound_builder.osc1(osc);
-	    default_params_builder.osc1_volume(deluge::Value(0x7FFFFFFF));
+            default_params_builder.osc1_volume(deluge::Value(0x7FFFFFFF));
         } else {
             sound_builder.osc2(osc);
-	    default_params_builder.osc2_volume(deluge::Value(0x7FFFFFFF));
+            default_params_builder.osc2_volume(deluge::Value(0x7FFFFFFF));
         }
     }
+    // Set the amp envelope to have attack 50, decay 25, sustain 50, release 25
+    default_params_builder.envelope1(
+        deluge::EnvelopeBuilder::default()
+            .attack(deluge::Value(0x80000000))
+            .decay(deluge::Value(0x00000000))
+            .sustain(deluge::Value(0x7FFFFFD2))
+            .release(deluge::Value(0x00000000))
+            .build()
+            .unwrap(),
+    );
     sound_builder.default_params(default_params_builder.build().unwrap());
     let sound = sound_builder.build().unwrap();
 
     let xml = sound.to_xml();
     fs::create_dir_all(folder).unwrap();
-    let file_name = SoundFont::safe_name(&preset.name) + ".xml";
+    let mut preset_name = prefix.to_owned();
+    preset_name.push_str(&preset.name);
+    let file_name = SoundFont::safe_name(&preset_name) + ".xml";
     fs::write(folder.join(Path::new(&file_name)), xml).unwrap();
 }
 
 fn get_zone_sample(zone: &[Generator]) -> Option<Generator> {
     for g in zone {
         if let Generator::SampleID(_) = g {
+            return Some(*g);
+        }
+    }
+    None
+}
+
+fn get_zone_sample_mode(zone: &[Generator]) -> Option<Generator> {
+    for g in zone {
+        if let Generator::SampleModes(_) = g {
             return Some(*g);
         }
     }
@@ -203,32 +259,32 @@ fn get_zone_key_range(zone: &[Generator]) -> Option<Generator> {
     None
 }
 
-fn get_zone_vel_range(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::VelRange(_, _) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
+// fn get_zone_vel_range(zone: &[Generator]) -> Option<Generator> {
+//     for g in zone {
+//         if let Generator::VelRange(_, _) = g {
+//             return Some(*g);
+//         }
+//     }
+//     None
+// }
 
-fn get_zone_attack(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::AttackVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
+// fn get_zone_attack(zone: &[Generator]) -> Option<Generator> {
+//     for g in zone {
+//         if let Generator::AttackVolEnv(_) = g {
+//             return Some(*g);
+//         }
+//     }
+//     None
+// }
 
-fn get_zone_decay(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::DecayVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
+// fn get_zone_decay(zone: &[Generator]) -> Option<Generator> {
+//     for g in zone {
+//         if let Generator::DecayVolEnv(_) = g {
+//             return Some(*g);
+//         }
+//     }
+//     None
+// }
 
 fn get_zone_overriding_root_key(zone: &[Generator]) -> Option<Generator> {
     for g in zone {
@@ -313,6 +369,14 @@ fn main() {
                 .required(false),
         )
         .arg(
+            Arg::with_name("PREFIX")
+                .short("p")
+                .long("synth-prefix")
+                .takes_value(true)
+                .help("Sets a prefix to prepend to synth xml file names")
+                .required(false),
+        )
+        .arg(
             Arg::with_name("DUMP")
                 .help("Dump info")
                 .short("d")
@@ -345,10 +409,14 @@ fn main() {
             // TODO: save all xmls
             // Note: if the samples aren't saved above we use a dummy folder
             let samples = sample_folder.unwrap_or("SAMPLES");
-            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 2);
-            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 5);
-            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 20);
-            save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 22);
+            let prefix = matches.value_of("PREFIX").unwrap_or("");
+            for ix in 0..(sf.presets.len() - 1) {
+                save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), ix, &prefix);
+            }
+            // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 2, prefix);
+            // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 5, prefix);
+            // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 20, prefix);
+            // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 22, prefix);
         }
     }
 }
