@@ -1,0 +1,7 @@
+# lfo frequency
+
+20 => 0.4Hz
+25 => 1.3Hz
+30 => 4Hz
+
+
