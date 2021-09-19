@@ -8,6 +8,21 @@ use yaserde::ser::to_string_with_config;
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Value(pub u32);
 
+impl Value {
+    pub fn to_deluge_val(&self) -> i32 {
+	let iv = self.0 as i32;
+	let ivf = iv as f32;
+	let ratio = ivf / i32::MAX as f32;
+	(ratio * 25.0 + 25.0).round() as i32
+    }
+
+    pub fn from_deluge_val(v: i32) -> Value {
+	let ratio = (v - 25) as f32 / 25.0;
+	let iv = (ratio * i32::MAX as f32).round() as i32;
+	Value(iv as u32)
+    }
+}
+
 impl yaserde::YaSerialize for Value {
     fn serialize<W: Write>(&self, writer: &mut yaserde::ser::Serializer<W>) -> Result<(), String> {
         let s = format!("0x{:08X}", self.0);
@@ -1043,5 +1058,15 @@ mod tests {
         for line in s.lines() {
             println!("{}", line);
         }
+    }
+
+    #[test]
+    fn test_value() {
+	assert_eq!(Value(0x80000000).to_deluge_val(), 0);
+	assert_eq!(Value(0x00000000).to_deluge_val(), 25);
+	assert_eq!(Value(0x7FFFFFFF).to_deluge_val(), 50);
+	assert_eq!(Value::from_deluge_val(0), Value(0x80000000));
+	assert_eq!(Value::from_deluge_val(25), Value(0x00000000));
+	assert_eq!(Value::from_deluge_val(50), Value(0x7FFFFFFF));
     }
 }
