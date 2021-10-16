@@ -129,16 +129,8 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
             .retrig_phase(None)
             .reversed(Some(0))
             .time_stretch_enable(Some(0))
-            .time_stretch_amount(Some(0));
-        match loop_mode {
-            LoopMode::NoLoop => {}
-            LoopMode::ContinuousLoop => {
-                osc_builder.loop_mode(Some(2));
-            }
-            LoopMode::ReleaseLoop => {
-                osc_builder.loop_mode(Some(2));
-            }
-        }
+            .time_stretch_amount(Some(0))
+            .loop_mode(Some(0)); // Always use loop mode 0 (Cut)
         let single_sample = osc.len() == 1;
         let mut sample_ranges = vec![];
         for (ix, (o, _low, high, _sample_name, _root)) in osc.iter().enumerate() {
