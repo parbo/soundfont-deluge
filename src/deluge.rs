@@ -943,11 +943,76 @@ impl Default for Sound {
 impl Sound {
     pub fn to_xml(&self) -> String {
         let yaserde_cfg = yaserde::ser::Config {
-            perform_indent: true,
+            perform_indent: false,
             ..Default::default()
         };
         // serialize
-        to_string_with_config(self, &yaserde_cfg).unwrap()
+        let xml = to_string_with_config(self, &yaserde_cfg).unwrap();
+        // reformat
+        let mut out = String::new();
+        let mut indent_level = -1i32;
+        let mut in_string = false;
+        let mut prev = None;
+        let mut chars = xml.chars().peekable();
+        while let Some(c) = chars.next() {
+            match c {
+                '>' => {
+                    out.push(c);
+                    if !in_string {
+                        out.push('\n');
+                        if indent_level > 0 {
+                            out.push_str(&"\t".repeat(indent_level as usize));
+                        }
+                    }
+                }
+                '<' => {
+                    if in_string {
+                        out.push(c);
+                    } else {
+                        if chars.peek() == Some(&'/') {
+                            if out.chars().last() == Some('\t') {
+                                out.pop();
+                            }
+                            out.push(c);
+                        } else {
+                            out.push(c);
+                            indent_level += 1;
+                        }
+                    }
+                }
+                '/' => {
+                    if !in_string {
+                        indent_level -= 1;
+                    }
+                    out.push(c);
+                }
+                '"' => {
+                    in_string = !in_string;
+                    out.push(c);
+                }
+                ' ' => {
+                    if in_string {
+                        out.push(c);
+                    } else {
+                        if chars.peek() == Some(&'/') {
+                            out.push(c);
+                        } else {
+                            if indent_level > 0 {
+                                out.push('\n');
+                                out.push_str(&"\t".repeat(indent_level as usize));
+                            } else {
+                                out.push(c);
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    out.push(c);
+                }
+            }
+            prev = Some(c);
+        }
+        out
     }
 
     pub fn from_xml(file: &mut fs::File) -> Sound {
