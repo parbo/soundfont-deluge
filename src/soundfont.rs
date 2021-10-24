@@ -723,10 +723,15 @@ impl SoundFont {
     pub fn safe_name(s: &str) -> String {
         s.chars()
             .map(|x| match x {
-                '/' => '_',
-                '"' => '_',
-                '?' => '_',
-                '*' => '_',
+                '/' => '_',  // filesystem
+                '\\' => '_', // filesystem
+                '?' => '_',  // filesystem
+                '*' => '_',  // filesystem
+                '\'' => '_', // xml
+                '"' => '_',  // xml
+                '<' => '_',  // xml
+                '>' => '_',  // xml
+                '&' => '_',  // xml
                 _ => x,
             })
             .collect()
