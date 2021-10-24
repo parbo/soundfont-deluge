@@ -157,7 +157,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
             }
             if let Some(Generator::SampleID(sample_id)) = get_zone_sample(&zones[*o]) {
                 let sample = &sf.samples[sample_id as usize];
-                let name = SoundFont::safe_name(&sample.name) + ".wav";
+                let name = format!("{} - {}.wav", sample_id, SoundFont::safe_name(&sample.name));
                 let file_path: Vec<String> = sample_folder
                     .join(name)
                     .components()

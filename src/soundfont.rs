@@ -736,13 +736,17 @@ impl SoundFont {
         info!("saving samples to {}", folder.display());
         fs::create_dir_all(folder)?;
         info!("created folder!");
-        for sample in &self.samples {
+        for ix in 0..self.samples.len() {
+	    let sample = &self.samples[ix];
             match sample.sample_type {
                 1 | 2 | 4 => {
                     // TODO: maybe combine 2 and 4 to stereo sample?
-                    info!("saving sample {}, sample rate: {}", sample.name, sample.sample_rate);
+                    info!(
+                        "saving sample {}, sample rate: {}",
+                        sample.name, sample.sample_rate
+                    );
                     let h = wav::Header::new(wav::WAV_FORMAT_PCM, 1, sample.sample_rate, 16);
-                    let name = SoundFont::safe_name(&sample.name) + ".wav";
+                    let name = format!("{} - {}.wav", ix, SoundFont::safe_name(&sample.name));
                     let file_path = folder.join(name);
                     info!("file path: {}", file_path.display());
                     let mut out_file = fs::File::create(file_path)?;
