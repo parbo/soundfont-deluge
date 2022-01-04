@@ -4,7 +4,9 @@ extern crate yaserde_derive;
 
 mod deluge;
 mod soundfont;
+mod akp;
 
+use akp::AkaiProgram;
 use clap::{App, Arg};
 use log::{info, warn};
 use soundfont::{Generator, LoopMode, SoundFont};
@@ -386,6 +388,12 @@ fn main() {
         if matches.is_present("DUMP") {
             println!("dumping");
             println!("{:?}", synth);
+        }
+    } else if filename.to_lowercase().ends_with(".akp") {
+	let ap = AkaiProgram::parse_akai_program(&mut file);
+        if matches.is_present("DUMP") {
+            println!("dumping");
+            ap.dump();
         }
     } else {
         let sf = SoundFont::parse_soundfont(&mut file);
