@@ -903,7 +903,7 @@ pub struct Sound {
     default_params: DefaultParams,
     arpeggiator: Arpeggiator,
     #[yaserde(rename = "midiKnobs")]
-    midi_knobs: MidiKnobs,
+    midi_knobs: Option<MidiKnobs>,
     #[yaserde(rename = "modKnobs")]
     mod_knobs: ModKnobs,
 }
@@ -934,7 +934,7 @@ impl Default for Sound {
             mod_fx_type: ModFxType::default(),
             default_params: DefaultParams::default(),
             arpeggiator: Arpeggiator::default(),
-            midi_knobs: MidiKnobs::default(),
+            midi_knobs: None,
             mod_knobs: ModKnobs::default(),
         }
     }
@@ -1012,6 +1012,7 @@ impl Sound {
             }
             prev = Some(c);
         }
+        out = out.replace("utf-8", "UTF-8");
         out
     }
 

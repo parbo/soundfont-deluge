@@ -402,7 +402,7 @@ pub struct SoundFont {
 
 impl SoundFont {
     pub fn parse_soundfont(file: &mut fs::File) -> SoundFont {
-	let chunk = riff::Chunk::read(file, 0).unwrap();
+        let chunk = riff::Chunk::read(file, 0).unwrap();
         let mut todo = VecDeque::new();
         todo.push_back((chunk, 1));
         let mut samples = vec![];
@@ -446,13 +446,16 @@ impl SoundFont {
                         }
                         INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
                             let data = c.read_contents(file).unwrap();
-                            let name = String::from_utf8(data).unwrap();
-                            debug!(
-                                "{chr:>indent$}Name: {}",
-                                name,
-                                indent = 2 * (indent + 1),
-                                chr = ' '
-                            );
+                            if let Ok(name) = String::from_utf8(data) {
+                                debug!(
+                                    "{chr:>indent$}Name: {}",
+                                    name,
+                                    indent = 2 * (indent + 1),
+                                    chr = ' '
+                                );
+                            } else {
+                                warn!("invalid utf-8!");
+                            }
                         }
                         SMPL => {
                             sample_data = c.read_contents(file).unwrap();
@@ -742,7 +745,7 @@ impl SoundFont {
         fs::create_dir_all(folder)?;
         info!("created folder!");
         for ix in 0..self.samples.len() {
-	    let sample = &self.samples[ix];
+            let sample = &self.samples[ix];
             match sample.sample_type {
                 1 | 2 | 4 => {
                     // TODO: maybe combine 2 and 4 to stereo sample?
