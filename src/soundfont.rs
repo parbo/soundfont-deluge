@@ -1,6 +1,7 @@
 use binread::*;
 use log::{debug, error, info, warn};
 use std::collections::VecDeque;
+use std::fmt;
 use std::fs;
 use std::io::Cursor;
 use std::path::Path;
@@ -116,6 +117,35 @@ pub enum Generator {
     OverridingRootKey(i16),
     EndOper,
     Unused,
+}
+
+fn from_cents(cents: i16, zero: f32) -> f32 {
+    2.0f32.powf(cents as f32 / 1200.0) * zero
+}
+
+impl fmt::Display for Generator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Generator::InitialFilterFc(x)
+            | Generator::FreqVibLFO(x)
+            | Generator::FreqModLFO(x)
+            | Generator::DelayVibLFO(x)
+            | Generator::DelayModLFO(x) => {
+                write!(f, "{:?}, f: {} Hz", self, from_cents(x, 8.176))
+            }
+            Generator::AttackVolEnv(x)
+            | Generator::AttackModEnv(x)
+            | Generator::DecayVolEnv(x)
+            | Generator::DecayModEnv(x)
+            | Generator::ReleaseVolEnv(x)
+            | Generator::ReleaseModEnv(x)
+            | Generator::HoldVolEnv(x)
+            | Generator::HoldModEnv(x) => {
+                write!(f, "{:?}, t: {} s", self, from_cents(x, 1.0))
+            }
+            x => write!(f, "{:?}", x),
+        }
+    }
 }
 
 fn parse_generator(v: u16, a: [u8; 2]) -> Generator {
@@ -653,7 +683,7 @@ impl SoundFont {
                         self.dump_instrument(*index as usize);
                     }
                     _ => {
-                        info!("      {:?}", gen);
+                        info!("      {}", gen);
                     }
                 }
             }
@@ -704,7 +734,7 @@ impl SoundFont {
                         info!("              {:?}", self.samples[*index as usize]);
                     }
                     _ => {
-                        info!("            {:?}", gen);
+                        info!("            {}", gen);
                     }
                 }
             }
