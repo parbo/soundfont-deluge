@@ -123,16 +123,49 @@ fn from_cents(cents: i16, zero: f32) -> f32 {
     2.0f32.powf(cents as f32 / 1200.0) * zero
 }
 
-impl fmt::Display for Generator {
+fn percent_from_promille(v: i16, zero: f32) -> f32 {
+    ((v as f32) - zero) / 10.0
+}
+
+fn db_from_centibel(v: i16) -> f32 {
+    (v as f32) / 10.0
+}
+
+pub enum Unit {
+    Frequency(f32),
+    Seconds(f32),
+    Send(f32),
+    Pan(f32),
+    Level(f32),
+}
+
+impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Unit::Frequency(x) => {
+                write!(f, "{} Hz", x)
+            }
+            Unit::Seconds(x) => {
+                write!(f, "{} s", x)
+            }
+            Unit::Send(x) | Unit::Pan(x) => {
+                write!(f, "{} %", x)
+            }
+            Unit::Level(x) => {
+                write!(f, "{} dB", x)
+            }
+        }
+    }
+}
+
+impl Generator {
+    pub fn value(&self) -> Option<Unit> {
         match *self {
             Generator::InitialFilterFc(x)
             | Generator::FreqVibLFO(x)
             | Generator::FreqModLFO(x)
             | Generator::DelayVibLFO(x)
-            | Generator::DelayModLFO(x) => {
-                write!(f, "{:?}, f: {} Hz", self, from_cents(x, 8.176))
-            }
+            | Generator::DelayModLFO(x) => Some(Unit::Frequency(from_cents(x, 8.176))),
             Generator::AttackVolEnv(x)
             | Generator::AttackModEnv(x)
             | Generator::DecayVolEnv(x)
@@ -140,10 +173,26 @@ impl fmt::Display for Generator {
             | Generator::ReleaseVolEnv(x)
             | Generator::ReleaseModEnv(x)
             | Generator::HoldVolEnv(x)
-            | Generator::HoldModEnv(x) => {
-                write!(f, "{:?}, t: {} s", self, from_cents(x, 1.0))
+            | Generator::HoldModEnv(x) => Some(Unit::Seconds(from_cents(x, 1.0))),
+            Generator::ChorusEffectsSend(x) | Generator::ReverbEffectsSend(x) => {
+                Some(Unit::Send(percent_from_promille(x, 0.0)))
             }
-            x => write!(f, "{:?}", x),
+            Generator::Pan(x) => Some(Unit::Pan(percent_from_promille(x, 0.0))),
+            Generator::InitialFilterQ(x)
+            | Generator::SustainModEnv(x)
+            | Generator::SustainVolEnv(x)
+            | Generator::InitialAttenuation(x) => Some(Unit::Level(db_from_centibel(x))),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for Generator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(v) = self.value() {
+            write!(f, "{:?}, {}", self, v)
+        } else {
+            write!(f, "{:?}", self)
         }
     }
 }

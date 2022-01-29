@@ -5,6 +5,60 @@ use yaserde;
 use yaserde::de::from_str;
 use yaserde::ser::to_string_with_config;
 
+// Value mappings
+// Value        Level   LP Cutoff       HP Cutoff       LFO Rate                        Value   Pitch Mod Depth Attack          Decay           Release         Value
+// 0    -               LO              LO              0.005 Hz        211.8 s         0       0 cents         0.7 ms          9 ms            0 ms            0
+// 1    -68.0 dB        LO              LO              0.006 Hz        169.4 s         1       3 cents         0.9 ms          93 ms           44 ms           1
+// 2    -56.0 dB        LO              LO              0.007 Hz        135.5 s         2       10 cents        1.0 ms          182 ms          91 ms           2
+// 3    -48.9 dB        53 Hz           LO              0.009 Hz        108.4 s         3       20 cents        1.2 ms          276 ms          139 ms          3
+// 4    -43.9 dB        53 Hz           LO              0.012 Hz        86.74 s         4       34 cents        1.4 ms          375 ms          189 ms          4
+// 5    -40.0 dB        53 Hz           LO              0.014 Hz        69.39 s         5       52 cents        1.7 ms          478 ms          240 ms          5
+// 6    -36.9 dB        53 Hz           LO              0.018 Hz        55.51 s         6       74 cents        2.0 ms          586 ms          294 ms          6
+// 7    -34.2 dB        53 Hz           LO              0.023 Hz        44.41 s         7       99 cents        2.3 ms          699 ms          349 ms          7
+// 8    -31.9 dB        53 Hz           19 Hz           0.028 Hz        35.53 s         8       129 cents       2.7 ms          0.82 s          407 ms          8
+// 9    -29.8 dB        53 Hz           23 Hz           0.035 Hz        28.42 s         9       162 cents       3.2 ms          0.94 s          466 ms          9
+// 10   -28.0 dB        61 Hz           29 Hz           0.044 Hz        22.74 s         10      198 cents       3.8 ms          1.07 s          527 ms          10
+// 11   -26.3 dB        71 Hz           36 Hz           0.055 Hz        18.19 s         11      239 cents       4.5 ms          1.21 s          600 ms          11
+// 12   -24.8 dB        83 Hz           46 Hz           0.069 Hz        14.55 s         12      283 cents       5.3 ms          1.36 s          675 ms          12
+// 13   -23.4 dB        97 Hz           57 Hz           0.086 Hz        11.64 s         13      331 cents       6.3 ms          1.51 s          751 ms          13
+// 14   -22.1 dB        113 Hz          71 Hz           0.107 Hz        9.31 s          14      383 cents       7.4 ms          1.67 s          830 ms          14
+// 15   -20.9 dB        131 Hz          88 Hz           0.134 Hz        7.45 s          15      438 cents       8.8 ms          1.82 s          910 ms          15
+// 16   -19.8 dB        153 Hz          109 Hz          0.168 Hz        5.96 s          16      498 cents       10 ms           1.99 s          0.99 s          16
+// 17   -18.8 dB        178 Hz          135 Hz          0.210 Hz        4.77 s          17      561 cents       12 ms           2.16 s          1.08 s          17
+// 18   -17.8 dB        208 Hz          168 Hz          0.262 Hz        3.81 s          18      627 cents       14 ms           2.33 s          1.17 s          18
+// 19   -16.8 dB        242 Hz          208 Hz          0.328 Hz        3.05 s          19      698 cents       17 ms           2.52 s          1.26 s          19
+// 20   -15.9 dB        281 Hz          258 Hz          0.410 Hz        2.44 s          20      772 cents       20 ms           2.71 s          1.36 s          20
+// 21   -15.1 dB        328 Hz          320 Hz          0.512 Hz        1.95 s          21      850 cents       24 ms           2.91 s          1.46 s          21
+// 22   -14.3 dB        381 Hz          396 Hz          0.640 Hz        1.56 s          22      932 cents       28 ms           3.12 s          1.57 s          22
+// 23   -13.5 dB        444 Hz          491 Hz          0.800 Hz        1.25 s          23      1,018 cents     33 ms           3.35 s          1.69 s          23
+// 24   -12.8 dB        516 Hz          607 Hz          1.00 Hz         1.00 s          24      1,107 cents     39 ms           3.58 s          1.81 s          24
+// 25   -12.1 dB        600 Hz          750 Hz          1.25 Hz         800 ms          25      1,200 cents     46 ms           3.84 s          1.94 s          25
+// 26   -11.4 dB        698 Hz          928 Hz          1.56 Hz         640 ms          26      1,298 cents     54 ms           4.11 s          2.08 s          26
+// 27   -10.7 dB        812 Hz          1.1 kHz         1.95 Hz         512 ms          27      1,400 cents     64 ms           4.40 s          2.22 s          27
+// 28   -10.1 dB        945 Hz          1.4 kHz         2.44 Hz         410 ms          28      1,506 cents     76 ms           4.72 s          2.38 s          28
+// 29   -9.5 dB         1.1 kHz         1.7 kHz         3.05 Hz         328 ms          29      1,615 cents     90 ms           5.07 s          2.56 s          29
+// 30   -8.9 dB         1.3 kHz         2.2 kHz         3.81 Hz         262 ms          30      1,729 cents     106 ms          5.44 s          2.75 s          30
+// 31   -8.3 dB         1.5 kHz         2.7 kHz         4.77 Hz         210 ms          31      1,846 cents     125 ms          5.85 s          2.95 s          31
+// 32   -7.8 dB         1.7 kHz         3.3 kHz         5.96 Hz         168 ms          32      1,967 cents     148 ms          6.31 s          3.18 s          32
+// 33   -7.2 dB         2.0 kHz         4.0 kHz         7.45 Hz         134 ms          33      2,092 cents     174 ms          6.81 s          3.43 s          33
+// 34   -6.7 dB         2.3 kHz         5.0 kHz         9 Hz            107 ms          34      2,220 cents     206 ms          7.37 s          3.71 s          34
+// 35   -6.2 dB         2.7 kHz         6.1 kHz         12 Hz           86 ms           35      2,353 cents     243 ms          8.00 s          4.01 s          35
+// 36   -5.7 dB         3.1 kHz         7.6 kHz         15 Hz           69 ms           36      2,489 cents     287 ms          8.70 s          4.36 s          36
+// 37   -5.3 dB         3.7 kHz         9.3 kHz         18 Hz           55 ms           37      2,629 cents     339 ms          9.50 s          4.75 s          37
+// 38   -4.8 dB         4.3 kHz         11.5 kHz        23 Hz           44 ms           38      2,773 cents     400 ms          10.4 s          5.18 s          38
+// 39   -4.3 dB         4.9 kHz         14.1 kHz        28 Hz           35 ms           39      2,920 cents     472 ms          11.4 s          5.68 s          39
+// 40   -3.9 dB         5.7 kHz         17.3 kHz        36 Hz           28 ms           40      3,072 cents     558 ms          12.6 s          6.24 s          40
+// 41   -3.5 dB         6.7 kHz         18.0 kHz        44 Hz           23 ms           41      3,227 cents     658 ms          14.0 s          6.89 s          41
+// 42   -3.0 dB         7.7 kHz         HI              56 Hz           18 ms           42      3,386 cents     777 ms          15.6 s          7.63 s          42
+// 43   -2.6 dB         9.0 kHz         HI              69 Hz           14 ms           43      3,549 cents     918 ms          17.5 s          8.50 s          43
+// 44   -2.2 dB         10.5 kHz        HI              87 Hz           12 ms           44      3,716 cents     1.08 s          19.8 s          9.50 s          44
+// 45   -1.8 dB         12.1 kHz        HI              108 Hz          9 ms            45      3,886 cents     1.28 s          22.4 s          10.7 s          45
+// 46   -1.5 dB         14.1 kHz        HI              136 Hz          7 ms            46      4,060 cents     1.51 s          25.6 s          12.1 s          46
+// 47   -1.1 dB         16.4 kHz        HI              169 Hz          6 ms            47      4,238 cents     1.78 s          29.4 s          13.7 s          47
+// 48   -0.7 dB         19.0 kHz        HI              212 Hz          5 ms            48      4,420 cents     2.11 s          34.0 s          15.6 s          48
+// 49   -0.4 dB         22.1 kHz        HI              265 Hz          4 ms            49      4,606 cents     2.49 s          39.5 s          17.9 s          49
+// 50   0.0 dB          HI              HI              331 Hz          3 ms            50      4,796 cents     2.94 s          46.4 s          20.7 s          50
+
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Value(pub u32);
 

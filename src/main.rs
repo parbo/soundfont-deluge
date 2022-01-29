@@ -2,14 +2,14 @@ extern crate yaserde;
 #[macro_use]
 extern crate yaserde_derive;
 
+pub mod akp;
 pub mod deluge;
 pub mod soundfont;
-pub mod akp;
 
 use akp::AkaiProgram;
 use clap::{App, Arg};
 use log::{info, warn};
-use soundfont::{Generator, LoopMode, SoundFont};
+use soundfont::{Generator, LoopMode, SoundFont, Unit};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -50,6 +50,10 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
     // Map zones to oscs
     let mut oscs = vec![];
     let mut taken = HashSet::new();
+    let mut attack_vol = vec![];
+    let mut decay_vol = vec![];
+    let mut sustain_vol = vec![];
+    let mut release_vol = vec![];
     loop {
         let mut osc = (LoopMode::NoLoop, vec![]);
         // Find next adjacent
@@ -60,6 +64,26 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
                     continue;
                 }
                 let zone = &zones[zone_ix];
+                if let Some(g) = get_zone_attack_vol(zone) {
+                    if let Some(Unit::Seconds(s)) = g.value() {
+                        attack_vol.push(s);
+                    }
+                }
+                if let Some(g) = get_zone_decay_vol(zone) {
+                    if let Some(Unit::Seconds(s)) = g.value() {
+                        decay_vol.push(s);
+                    }
+                }
+                if let Some(g) = get_zone_sustain_vol(zone) {
+                    if let Some(Unit::Level(lvl)) = g.value() {
+                        sustain_vol.push(lvl);
+                    }
+                }
+                if let Some(g) = get_zone_release_vol(zone) {
+                    if let Some(Unit::Seconds(s)) = g.value() {
+                        release_vol.push(s);
+                    }
+                }
                 if let Some(Generator::SampleModes(loop_mode)) = get_zone_sample_mode(zone) {
                     osc.0 = loop_mode;
                 }
@@ -205,6 +229,22 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
             default_params_builder.osc2_volume(deluge::Value(0x7FFFFFFF));
         }
     }
+    println!(
+        "attack: {} s",
+        attack_vol.iter().sum::<f32>() / attack_vol.len() as f32
+    );
+    println!(
+        "decay: {} s",
+        decay_vol.iter().sum::<f32>() / decay_vol.len() as f32
+    );
+    println!(
+        "sustain: {} dB",
+        sustain_vol.iter().sum::<f32>() / sustain_vol.len() as f32
+    );
+    println!(
+        "release: {} s",
+        release_vol.iter().sum::<f32>() / release_vol.len() as f32
+    );
     // Set the amp envelope to have attack 50, decay 25, sustain 50, release 25
     default_params_builder.envelope1(
         deluge::EnvelopeBuilder::default()
@@ -262,23 +302,41 @@ fn get_zone_key_range(zone: &[Generator]) -> Option<Generator> {
 //     None
 // }
 
-// fn get_zone_attack(zone: &[Generator]) -> Option<Generator> {
-//     for g in zone {
-//         if let Generator::AttackVolEnv(_) = g {
-//             return Some(*g);
-//         }
-//     }
-//     None
-// }
+fn get_zone_attack_vol(zone: &[Generator]) -> Option<Generator> {
+    for g in zone {
+        if let Generator::AttackVolEnv(_) = g {
+            return Some(*g);
+        }
+    }
+    None
+}
 
-// fn get_zone_decay(zone: &[Generator]) -> Option<Generator> {
-//     for g in zone {
-//         if let Generator::DecayVolEnv(_) = g {
-//             return Some(*g);
-//         }
-//     }
-//     None
-// }
+fn get_zone_decay_vol(zone: &[Generator]) -> Option<Generator> {
+    for g in zone {
+        if let Generator::DecayVolEnv(_) = g {
+            return Some(*g);
+        }
+    }
+    None
+}
+
+fn get_zone_sustain_vol(zone: &[Generator]) -> Option<Generator> {
+    for g in zone {
+        if let Generator::SustainVolEnv(_) = g {
+            return Some(*g);
+        }
+    }
+    None
+}
+
+fn get_zone_release_vol(zone: &[Generator]) -> Option<Generator> {
+    for g in zone {
+        if let Generator::ReleaseVolEnv(_) = g {
+            return Some(*g);
+        }
+    }
+    None
+}
 
 fn get_zone_overriding_root_key(zone: &[Generator]) -> Option<Generator> {
     for g in zone {
@@ -390,7 +448,7 @@ fn main() {
             println!("{:?}", synth);
         }
     } else if filename.to_lowercase().ends_with(".akp") {
-	let ap = AkaiProgram::parse_akai_program(&mut file);
+        let ap = AkaiProgram::parse_akai_program(&mut file);
         if matches.is_present("DUMP") {
             println!("dumping");
             ap.dump();
