@@ -952,7 +952,7 @@ impl Sound {
         let mut out = String::new();
         let mut indent_level = -1i32;
         let mut in_string = false;
-        let mut prev = None;
+        let mut _prev = None;
         let mut chars = xml.chars().peekable();
         while let Some(c) = chars.next() {
             match c {
@@ -1010,7 +1010,7 @@ impl Sound {
                     out.push(c);
                 }
             }
-            prev = Some(c);
+            _prev = Some(c);
         }
         out = out.replace("utf-8", "UTF-8");
         out
