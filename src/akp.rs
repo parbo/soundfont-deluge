@@ -1,9 +1,8 @@
 use binread::*;
-use log::{debug, error, info, warn};
+use log::debug;
 use std::collections::VecDeque;
 use std::fs;
 use std::io::Cursor;
-use std::path::Path;
 
 fn make_string(s: &[u8; 20]) -> String {
     let first_null = s.iter().position(|&x| x == 0).unwrap_or(20);
@@ -14,22 +13,23 @@ fn make_string(s: &[u8; 20]) -> String {
 }
 
 const RIFF: [u8; 4] = [b'R', b'I', b'F', b'F'];
-const PRG: [u8; 4] = [b'p', b'r', b'g', b' '];
-const OUT: [u8; 4] = [b'o', b'u', b't', b' '];
-const TUNE: [u8; 4] = [b't', b'u', b'n', b'e'];
-const LFO: [u8; 4] = [b'l', b'f', b'o', b' '];
+// const PRG: [u8; 4] = [b'p', b'r', b'g', b' '];
+// const OUT: [u8; 4] = [b'o', b'u', b't', b' '];
+// const TUNE: [u8; 4] = [b't', b'u', b'n', b'e'];
+// const LFO: [u8; 4] = [b'l', b'f', b'o', b' '];
 const MODS: [u8; 4] = [b'm', b'o', b'd', b's'];
 const KGRP: [u8; 4] = [b'k', b'g', b'r', b'p'];
-const KLOC: [u8; 4] = [b'k', b'l', b'o', b'c'];
+// const KLOC: [u8; 4] = [b'k', b'l', b'o', b'c'];
 const ENV: [u8; 4] = [b'e', b'n', b'v', b' '];
 const FILT: [u8; 4] = [b'f', b'i', b'l', b't'];
 const ZONE: [u8; 4] = [b'z', b'o', b'n', b'e'];
 
 #[derive(BinRead, Debug)]
+#[allow(dead_code)]
 pub struct Zone {
     #[br(pad_before = 1)]
     num_chars: u8,
-    sample_name: [u8;20],
+    sample_name: [u8; 20],
     #[br(pad_before = 12)]
     low_velocity: u8,
     high_velocity: u8,
@@ -38,20 +38,21 @@ pub struct Zone {
     filter: i8,
     pan_balance: i8,
     playback: u8, // TODO: make enum
-    output: u8, // TODO: make enum
+    output: u8,   // TODO: make enum
     zone_level: i8,
     keyboard_track: u8, // TODO: make enum
     velocity: i16,
 }
 
 #[derive(BinRead, Debug)]
+#[allow(dead_code)]
 pub struct Location {
     #[br(pad_before = 4)]
     low_note: u8,
     high_note: u8,
     semitone_tune: i8,
     fine_tune: i8,
-    override_fx: u8,  // TODO: make enum
+    override_fx: u8, // TODO: make enum
     fx_send_level: u8,
     pitch_mod_1: i8,
     pitch_mod_2: i8,
@@ -62,6 +63,7 @@ pub struct Location {
 }
 
 #[derive(BinRead, Debug)]
+#[allow(dead_code)]
 pub struct Envelope {
     #[br(pad_before = 1)]
     rate_1: u8,
@@ -84,21 +86,22 @@ pub struct Envelope {
 }
 
 impl Envelope {
-    fn attack(&self) -> u8 {
-	self.rate_1
+    pub fn attack(&self) -> u8 {
+        self.rate_1
     }
-    fn decay(&self) -> u8 {
-	self.rate_3
+    pub fn decay(&self) -> u8 {
+        self.rate_3
     }
-    fn release(&self) -> u8 {
-	self.rate_4
+    pub fn release(&self) -> u8 {
+        self.rate_4
     }
-    fn sustain(&self) -> u8 {
-	self.level_3
+    pub fn sustain(&self) -> u8 {
+        self.level_3
     }
 }
 
 #[derive(BinRead, Debug)]
+#[allow(dead_code)]
 pub struct Filter {
     #[br(pad_before = 1)]
     filter_mode: u8, // TODO: make enum
@@ -113,6 +116,7 @@ pub struct Filter {
 }
 
 #[derive(BinRead, Debug)]
+#[allow(dead_code)]
 pub struct Mods {
     #[br(pad_before = 5)]
     amp_mod_1_src: u8, // TODO: make enum
@@ -150,14 +154,16 @@ pub struct Mods {
     filter_mod_input_3: u8, // TODO: make enum
 }
 
+#[allow(dead_code)]
 pub struct KeyGroup {
     location: Location,
     amp_env: Envelope,
     filter_env: Envelope,
     aux_env: Envelope,
-    zones: [Zone;4],
+    zones: [Zone; 4],
 }
 
+#[allow(dead_code)]
 pub struct AkaiProgram {
     mods: Mods,
     key_groups: Vec<KeyGroup>,
@@ -165,11 +171,11 @@ pub struct AkaiProgram {
 
 impl AkaiProgram {
     pub fn parse_akai_program(file: &mut fs::File) -> AkaiProgram {
-	let chunk = riff::Chunk::read(file, 0).unwrap();
+        let chunk = riff::Chunk::read(file, 0).unwrap();
         let mut todo = VecDeque::new();
         todo.push_back((chunk, 1));
-	let mut zones = vec![];
-	let mut mods = None;
+        let mut zones = vec![];
+        let mut mods = None;
         loop {
             match todo.pop_back() {
                 Some((c, indent)) => {
@@ -186,7 +192,7 @@ impl AkaiProgram {
                                 todo.push_back((child, indent + 1));
                             }
                         }
-			KGRP => {
+                        KGRP => {
                             for child in c.iter_no_type(file) {
                                 todo.push_back((child, indent + 1));
                             }
@@ -214,8 +220,8 @@ impl AkaiProgram {
                                     indent = 2 * (indent + 1),
                                     chr = ' '
                                 );
-				assert!(mods.is_none());
-				mods = Some(m);
+                                assert!(mods.is_none());
+                                mods = Some(m);
                             }
                         }
                         FILT => {
@@ -242,8 +248,7 @@ impl AkaiProgram {
                                 );
                             }
                         }
-                        _ => {
-                        }
+                        _ => {}
                     }
                 }
                 None => break,
@@ -251,13 +256,12 @@ impl AkaiProgram {
         }
 
         AkaiProgram {
-	    mods: mods.unwrap(),
-	    key_groups: vec![],
+            mods: mods.unwrap(),
+            key_groups: vec![],
         }
     }
 
-    pub fn dump(&self) {
-    }
+    pub fn dump(&self) {}
 
     pub fn safe_name(s: &str) -> String {
         s.chars()

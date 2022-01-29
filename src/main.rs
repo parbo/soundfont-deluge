@@ -2,9 +2,9 @@ extern crate yaserde;
 #[macro_use]
 extern crate yaserde_derive;
 
-mod deluge;
-mod soundfont;
-mod akp;
+pub mod deluge;
+pub mod soundfont;
+pub mod akp;
 
 use akp::AkaiProgram;
 use clap::{App, Arg};
