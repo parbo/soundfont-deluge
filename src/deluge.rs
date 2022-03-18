@@ -240,7 +240,7 @@ pub enum LfoType {
 
 impl Default for LfoType {
     fn default() -> LfoType {
-        LfoType::Sine
+        LfoType::Triangle
     }
 }
 
@@ -549,9 +549,9 @@ pub struct Equalizer {
     bass: Value,
     #[yaserde(attribute)]
     treble: Value,
-    #[yaserde(attribute)]
+    #[yaserde(attribute, rename = "bassFrequency")]
     bass_frequency: Value,
-    #[yaserde(attribute)]
+    #[yaserde(attribute, rename = "trebleFrequency")]
     treble_frequency: Value,
 }
 
@@ -622,7 +622,7 @@ pub struct DefaultParams {
     lfo2_rate: Value,
     #[yaserde(attribute, rename = "modulator1Amount")]
     modulator1_amount: Value,
-    #[yaserde(attribute, renanme = "modulator1Feedback")]
+    #[yaserde(attribute, rename = "modulator1Feedback")]
     modulator1_feedback: Value,
     #[yaserde(attribute, rename = "modulator2Amount")]
     modulator2_amount: Value,
@@ -714,7 +714,12 @@ impl Default for DefaultParams {
             stutter_rate: Value(0x00000000),
             sample_rate_reduction: Value(0x80000000),
             bitcrush: Value(0x80000000),
-            equalizer: Equalizer::default(),
+            equalizer: Equalizer {
+                bass: Value(0x00000000),
+                treble: Value(0x80000000),
+                bass_frequency: Value(0x00000000),
+                treble_frequency: Value(0x47AE1457)
+            },
             mod_fx_offset: Value(0x00000000),
             mod_fx_feedback: Value(0x00000000),
         }
@@ -965,8 +970,8 @@ pub struct Sound {
 impl Default for Sound {
     fn default() -> Sound {
         Sound {
-            firmware_version: Some("3.1.3".to_string()),
-            earliest_compatible_firmware: Some("3.1.3-beta".to_string()),
+            firmware_version: Some("3.1.5".to_string()),
+            earliest_compatible_firmware: Some("3.1.0-beta".to_string()),
             osc1: Osc::default(),
             osc2: Osc::default(),
             polyphonic: Polyphony::default(),
