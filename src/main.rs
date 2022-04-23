@@ -27,9 +27,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
         next_preset.bag_index as usize
     };
     let mut zones = vec![];
-    let mut zone = 0;
     for bag_ix in bag_start..bag_end {
-        zone = zone + 1;
         let is_last = ix == sf.pbags.len() - 1;
         let bag = &sf.pbags[bag_ix];
         let gen_start = bag.gen_ndx as usize;
@@ -59,11 +57,10 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
         // Find next adjacent
         loop {
             let mut found = false;
-            for zone_ix in 0..zones.len() {
+            for (zone_ix, zone) in zones.iter().enumerate() {
                 if taken.contains(&zone_ix) {
                     continue;
                 }
-                let zone = &zones[zone_ix];
                 if let Some(g) = get_zone_attack_vol(zone) {
                     if let Some(Unit::Seconds(s)) = g.value() {
                         attack_vol.push(s);
@@ -100,7 +97,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
                     {
                         root_note = Some(root);
                     }
-                    if osc.1.len() == 0 {
+                    if osc.1.is_empty() {
                         osc.1.push((zone_ix, low, high, sample_name, root_note));
                         taken.insert(zone_ix);
                         found = true;
@@ -125,7 +122,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
                 break;
             }
         }
-        if osc.1.len() == 0 {
+        if osc.1.is_empty() {
             break;
         }
         info!("osc: {:?}", osc);
@@ -146,7 +143,7 @@ fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, p
         );
     }
     for (loop_mode, osc) in &oscs[0..std::cmp::min(num, 2)] {
-        ix = ix + 1;
+        ix += 1;
         let mut osc_builder = deluge::OscBuilder::default();
         osc_builder
             .osc_type(deluge::OscType::Sample)
@@ -367,9 +364,7 @@ fn get_instrument_zones(sf: &SoundFont, ix: usize) -> Vec<Vec<Generator>> {
         let next_instrument = &sf.instruments[ix + 1];
         next_instrument.bag_index as usize
     };
-    let mut zone = 0;
     for bag_ix in bag_start..bag_end {
-        zone = zone + 1;
         let is_last = ix == sf.ibags.len() - 1;
         let bag = &sf.ibags[bag_ix];
         let gen_start = bag.gen_ndx as usize;
@@ -469,7 +464,7 @@ fn main() {
             let samples = sample_folder.unwrap_or("SAMPLES");
             let prefix = matches.value_of("PREFIX").unwrap_or("");
             for ix in 0..(sf.presets.len() - 1) {
-                save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), ix, &prefix);
+                save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), ix, prefix);
             }
             // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 2, prefix);
             // save_as_xml(&sf, Path::new(xml_folder), Path::new(samples), 5, prefix);
