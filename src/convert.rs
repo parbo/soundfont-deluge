@@ -5,6 +5,19 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
+macro_rules! get_zone_generator {
+    ($zone:expr, $pattern:pat) => ({
+        let mut ret = None;
+	for g in $zone {
+            if let $pattern = g {
+                ret = Some(*g);
+		break;
+            }
+        }
+        ret
+    } as Option<Generator>)
+}
+
 pub fn soundfont_to_deluge(
     sf: &SoundFont,
     sample_folder: &Path,
@@ -56,39 +69,39 @@ pub fn soundfont_to_deluge(
                 if taken.contains(&zone_ix) {
                     continue;
                 }
-                if let Some(g) = get_zone_attack_vol(zone) {
+                if let Some(g) = get_zone_generator!(zone, Generator::AttackVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
                         attack_vol.push(s);
                     }
                 }
-                if let Some(g) = get_zone_decay_vol(zone) {
+                if let Some(g) = get_zone_generator!(zone, Generator::DecayVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
                         decay_vol.push(s);
                     }
                 }
-                if let Some(g) = get_zone_sustain_vol(zone) {
+                if let Some(g) = get_zone_generator!(zone, Generator::SustainVolEnv(_)) {
                     if let Some(Unit::Level(lvl)) = g.value() {
                         sustain_vol.push(lvl);
                     }
                 }
-                if let Some(g) = get_zone_release_vol(zone) {
+                if let Some(g) = get_zone_generator!(zone, Generator::ReleaseVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
                         release_vol.push(s);
                     }
                 }
-                if let Some(Generator::SampleModes(loop_mode)) = get_zone_sample_mode(zone) {
+                if let Some(Generator::SampleModes(loop_mode)) = get_zone_generator!(zone, Generator::SampleModes(_)) {
                     osc.0 = loop_mode;
                 }
-                if let Some(Generator::KeyRange(low, high)) = get_zone_key_range(zone) {
+                if let Some(Generator::KeyRange(low, high)) = get_zone_generator!(zone, Generator::KeyRange(_, _)) {
                     let mut sample_name = None;
-                    if let Some(Generator::SampleID(sample_id)) = get_zone_sample(zone) {
+                    if let Some(Generator::SampleID(sample_id)) = get_zone_generator!(zone, Generator::SampleID(_)) {
                         let sample = &sf.samples[sample_id as usize];
                         sample_name = Some(sample.name.clone());
                     }
                     // TODO: check fine tune too
                     let mut root_note = None;
                     if let Some(Generator::OverridingRootKey(root)) =
-                        get_zone_overriding_root_key(zone)
+                        get_zone_generator!(zone, Generator::OverridingRootKey(_))
                     {
                         root_note = Some(root);
                     }
@@ -158,7 +171,7 @@ pub fn soundfont_to_deluge(
                 sample_range_builder.range_top_note(Some(*high as i32));
             }
             if let Some(Generator::OverridingRootKey(root)) =
-                get_zone_overriding_root_key(&zones[*o])
+                get_zone_generator!(&zones[*o], Generator::OverridingRootKey(_))
             {
                 if single_sample {
                     osc_builder.transpose(Some((60 - root).into()));
@@ -166,14 +179,14 @@ pub fn soundfont_to_deluge(
                     sample_range_builder.transpose(Some((60 - root).into()));
                 }
             }
-            if let Some(Generator::FineTune(cents)) = get_zone_fine_tune(&zones[*o]) {
+            if let Some(Generator::FineTune(cents)) = get_zone_generator!(&zones[*o], Generator::FineTune(_)) {
                 if single_sample {
                     osc_builder.cents(Some(cents.into()));
                 } else {
                     sample_range_builder.cents(Some(cents.into()));
                 }
             }
-            if let Some(Generator::SampleID(sample_id)) = get_zone_sample(&zones[*o]) {
+            if let Some(Generator::SampleID(sample_id)) = get_zone_generator!(&zones[*o], Generator::SampleID(_)) {
                 let sample = &sf.samples[sample_id as usize];
                 let name = format!("{} - {}.wav", sample_id, SoundFont::safe_name(&sample.name));
                 let file_path: Vec<String> = sample_folder
@@ -265,96 +278,6 @@ pub fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usiz
     info!("Writing xml to {} for {}", folder.display(), ix);
     let sound = soundfont_to_deluge(sf, sample_folder, ix, prefix);
     save_deluge_as_xml(&sound, folder);
-}
-
-fn get_zone_sample(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::SampleID(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_sample_mode(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::SampleModes(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_key_range(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::KeyRange(_, _) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-// fn get_zone_vel_range(zone: &[Generator]) -> Option<Generator> {
-//     for g in zone {
-//         if let Generator::VelRange(_, _) = g {
-//             return Some(*g);
-//         }
-//     }
-//     None
-// }
-
-fn get_zone_attack_vol(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::AttackVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_decay_vol(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::DecayVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_sustain_vol(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::SustainVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_release_vol(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::ReleaseVolEnv(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_overriding_root_key(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::OverridingRootKey(_) = g {
-            return Some(*g);
-        }
-    }
-    None
-}
-
-fn get_zone_fine_tune(zone: &[Generator]) -> Option<Generator> {
-    for g in zone {
-        if let Generator::FineTune(_) = g {
-            return Some(*g);
-        }
-    }
-    None
 }
 
 fn get_instrument_zones(sf: &SoundFont, ix: usize) -> Vec<Vec<Generator>> {
