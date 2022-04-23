@@ -965,6 +965,8 @@ pub struct Sound {
     midi_knobs: Option<MidiKnobs>,
     #[yaserde(rename = "modKnobs")]
     mod_knobs: ModKnobs,
+    #[yaserde(skip_serializing = true)]
+    pub name: String
 }
 
 impl Default for Sound {
@@ -995,6 +997,7 @@ impl Default for Sound {
             arpeggiator: Arpeggiator::default(),
             midi_knobs: None,
             mod_knobs: ModKnobs::default(),
+	    name: String::new(),
         }
     }
 }

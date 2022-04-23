@@ -1,12 +1,16 @@
-use log::{info, warn};
 use crate::deluge;
 use crate::soundfont::{Generator, LoopMode, SoundFont, Unit};
+use log::{info, warn};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-pub fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, prefix: &str) {
-    info!("Writing xml to {} for {}", folder.display(), ix);
+pub fn soundfont_to_deluge(
+    sf: &SoundFont,
+    sample_folder: &Path,
+    ix: usize,
+    prefix: &str,
+) -> deluge::Sound {
     let is_last = ix == sf.presets.len() - 1;
     let preset = &sf.presets[ix];
     info!("Preset: {}", preset.name);
@@ -244,14 +248,23 @@ pub fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usiz
             .unwrap(),
     );
     sound_builder.default_params(default_params_builder.build().unwrap());
-    let sound = sound_builder.build().unwrap();
-
-    let xml = sound.to_xml();
-    fs::create_dir_all(folder).unwrap();
     let mut preset_name = prefix.to_owned();
     preset_name.push_str(&preset.name);
-    let file_name = SoundFont::safe_name(&preset_name) + ".xml";
+    sound_builder.name(preset.name.to_owned());
+    sound_builder.build().unwrap()
+}
+
+pub fn save_deluge_as_xml(sound: &deluge::Sound, folder: &Path) {
+    let xml = sound.to_xml();
+    fs::create_dir_all(folder).unwrap();
+    let file_name = SoundFont::safe_name(&sound.name) + ".xml";
     fs::write(folder.join(Path::new(&file_name)), xml).unwrap();
+}
+
+pub fn save_as_xml(sf: &SoundFont, folder: &Path, sample_folder: &Path, ix: usize, prefix: &str) {
+    info!("Writing xml to {} for {}", folder.display(), ix);
+    let sound = soundfont_to_deluge(sf, sample_folder, ix, prefix);
+    save_deluge_as_xml(&sound, folder);
 }
 
 fn get_zone_sample(zone: &[Generator]) -> Option<Generator> {
