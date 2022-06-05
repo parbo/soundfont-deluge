@@ -950,7 +950,7 @@ impl Default for DefaultParams {
                 bass: Value(0x00000000),
                 treble: Value(0x80000000),
                 bass_frequency: Value(0x00000000),
-                treble_frequency: Value(0x47AE1457)
+                treble_frequency: Value(0x47AE1457),
             },
             mod_fx_offset: Value(0x00000000),
             mod_fx_feedback: Value(0x00000000),
@@ -1198,7 +1198,7 @@ pub struct Sound {
     #[yaserde(rename = "modKnobs")]
     mod_knobs: ModKnobs,
     #[yaserde(skip_serializing = true)]
-    pub name: String
+    pub name: String,
 }
 
 impl Default for Sound {
@@ -1229,7 +1229,7 @@ impl Default for Sound {
             arpeggiator: Arpeggiator::default(),
             midi_knobs: None,
             mod_knobs: ModKnobs::default(),
-	    name: String::new(),
+            name: String::new(),
         }
     }
 }

@@ -187,14 +187,18 @@ pub fn soundfont_to_deluge(
                     sample_range_builder.transpose(Some((60 - root).into()));
                 }
             }
-            if let Some(Generator::FineTune(cents)) = get_zone_generator!(&zones[*o], Generator::FineTune(_)) {
+            if let Some(Generator::FineTune(cents)) =
+                get_zone_generator!(&zones[*o], Generator::FineTune(_))
+            {
                 if single_sample {
                     osc_builder.cents(Some(cents.into()));
                 } else {
                     sample_range_builder.cents(Some(cents.into()));
                 }
             }
-            if let Some(Generator::SampleID(sample_id)) = get_zone_generator!(&zones[*o], Generator::SampleID(_)) {
+            if let Some(Generator::SampleID(sample_id)) =
+                get_zone_generator!(&zones[*o], Generator::SampleID(_))
+            {
                 let sample = &sf.samples[sample_id as usize];
                 let name = format!("{} - {}.wav", sample_id, SoundFont::safe_name(&sample.name));
                 let file_path: Vec<String> = sample_folder
