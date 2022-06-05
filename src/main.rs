@@ -2,6 +2,9 @@ extern crate yaserde;
 #[macro_use]
 extern crate yaserde_derive;
 
+#[macro_use]
+extern crate lazy_static;
+
 pub mod akp;
 pub mod convert;
 pub mod deluge;

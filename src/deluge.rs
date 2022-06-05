@@ -59,6 +59,238 @@ use yaserde::ser::to_string_with_config;
 // 49   -0.4 dB         22.1 kHz        HI              265 Hz          4 ms            49      4,606 cents     2.49 s          39.5 s          17.9 s          49
 // 50   0.0 dB          HI              HI              331 Hz          3 ms            50      4,796 cents     2.94 s          46.4 s          20.7 s          50
 
+lazy_static! {
+    static ref ATTACK_LUT: Vec<std::time::Duration> = vec![
+        std::time::Duration::from_micros(700),
+        std::time::Duration::from_micros(900),
+        std::time::Duration::from_micros(1000),
+        std::time::Duration::from_micros(1200),
+        std::time::Duration::from_micros(1400),
+        std::time::Duration::from_micros(1700),
+        std::time::Duration::from_micros(2000),
+        std::time::Duration::from_micros(2300),
+        std::time::Duration::from_micros(2700),
+        std::time::Duration::from_micros(3200),
+        std::time::Duration::from_micros(3800),
+        std::time::Duration::from_micros(4500),
+        std::time::Duration::from_micros(5300),
+        std::time::Duration::from_micros(6300),
+        std::time::Duration::from_micros(7400),
+        std::time::Duration::from_micros(8800),
+        std::time::Duration::from_millis(10),
+        std::time::Duration::from_millis(12),
+        std::time::Duration::from_millis(14),
+        std::time::Duration::from_millis(17),
+        std::time::Duration::from_millis(20),
+        std::time::Duration::from_millis(24),
+        std::time::Duration::from_millis(28),
+        std::time::Duration::from_millis(33),
+        std::time::Duration::from_millis(39),
+        std::time::Duration::from_millis(46),
+        std::time::Duration::from_millis(54),
+        std::time::Duration::from_millis(64),
+        std::time::Duration::from_millis(76),
+        std::time::Duration::from_millis(90),
+        std::time::Duration::from_millis(106),
+        std::time::Duration::from_millis(125),
+        std::time::Duration::from_millis(148),
+        std::time::Duration::from_millis(174),
+        std::time::Duration::from_millis(206),
+        std::time::Duration::from_millis(243),
+        std::time::Duration::from_millis(287),
+        std::time::Duration::from_millis(339),
+        std::time::Duration::from_millis(400),
+        std::time::Duration::from_millis(472),
+        std::time::Duration::from_millis(558),
+        std::time::Duration::from_millis(658),
+        std::time::Duration::from_millis(777),
+        std::time::Duration::from_millis(918),
+        std::time::Duration::from_millis(1080),
+        std::time::Duration::from_millis(1280),
+        std::time::Duration::from_millis(1510),
+        std::time::Duration::from_millis(1780),
+        std::time::Duration::from_millis(2110),
+        std::time::Duration::from_millis(2490),
+        std::time::Duration::from_millis(2940),
+    ];
+    static ref DECAY_LUT: Vec<std::time::Duration> = vec![
+        std::time::Duration::from_millis(9),
+        std::time::Duration::from_millis(93),
+        std::time::Duration::from_millis(182),
+        std::time::Duration::from_millis(276),
+        std::time::Duration::from_millis(375),
+        std::time::Duration::from_millis(478),
+        std::time::Duration::from_millis(586),
+        std::time::Duration::from_millis(699),
+        std::time::Duration::from_millis(820),
+        std::time::Duration::from_millis(940),
+        std::time::Duration::from_millis(1070),
+        std::time::Duration::from_millis(1210),
+        std::time::Duration::from_millis(1360),
+        std::time::Duration::from_millis(1510),
+        std::time::Duration::from_millis(1670),
+        std::time::Duration::from_millis(1820),
+        std::time::Duration::from_millis(1990),
+        std::time::Duration::from_millis(2160),
+        std::time::Duration::from_millis(2330),
+        std::time::Duration::from_millis(2520),
+        std::time::Duration::from_millis(2710),
+        std::time::Duration::from_millis(2910),
+        std::time::Duration::from_millis(3120),
+        std::time::Duration::from_millis(3350),
+        std::time::Duration::from_millis(3580),
+        std::time::Duration::from_millis(3840),
+        std::time::Duration::from_millis(4110),
+        std::time::Duration::from_millis(4400),
+        std::time::Duration::from_millis(4720),
+        std::time::Duration::from_millis(5070),
+        std::time::Duration::from_millis(5440),
+        std::time::Duration::from_millis(5850),
+        std::time::Duration::from_millis(6310),
+        std::time::Duration::from_millis(6810),
+        std::time::Duration::from_millis(7370),
+        std::time::Duration::from_millis(8000),
+        std::time::Duration::from_millis(8700),
+        std::time::Duration::from_millis(9500),
+        std::time::Duration::from_millis(10400),
+        std::time::Duration::from_millis(11400),
+        std::time::Duration::from_millis(12600),
+        std::time::Duration::from_millis(14000),
+        std::time::Duration::from_millis(15600),
+        std::time::Duration::from_millis(17500),
+        std::time::Duration::from_millis(19800),
+        std::time::Duration::from_millis(22400),
+        std::time::Duration::from_millis(25600),
+        std::time::Duration::from_millis(29400),
+        std::time::Duration::from_millis(34000),
+        std::time::Duration::from_millis(39500),
+        std::time::Duration::from_millis(46400),
+    ];
+    static ref RELEASE_LUT: Vec<std::time::Duration> = vec![
+        std::time::Duration::from_millis(0),
+        std::time::Duration::from_millis(44),
+        std::time::Duration::from_millis(91),
+        std::time::Duration::from_millis(139),
+        std::time::Duration::from_millis(189),
+        std::time::Duration::from_millis(240),
+        std::time::Duration::from_millis(294),
+        std::time::Duration::from_millis(349),
+        std::time::Duration::from_millis(407),
+        std::time::Duration::from_millis(466),
+        std::time::Duration::from_millis(527),
+        std::time::Duration::from_millis(600),
+        std::time::Duration::from_millis(675),
+        std::time::Duration::from_millis(751),
+        std::time::Duration::from_millis(830),
+        std::time::Duration::from_millis(910),
+        std::time::Duration::from_millis(990),
+        std::time::Duration::from_millis(1080),
+        std::time::Duration::from_millis(1170),
+        std::time::Duration::from_millis(1260),
+        std::time::Duration::from_millis(1360),
+        std::time::Duration::from_millis(1460),
+        std::time::Duration::from_millis(1570),
+        std::time::Duration::from_millis(1690),
+        std::time::Duration::from_millis(1810),
+        std::time::Duration::from_millis(1940),
+        std::time::Duration::from_millis(2080),
+        std::time::Duration::from_millis(2220),
+        std::time::Duration::from_millis(2380),
+        std::time::Duration::from_millis(2560),
+        std::time::Duration::from_millis(2750),
+        std::time::Duration::from_millis(2950),
+        std::time::Duration::from_millis(3180),
+        std::time::Duration::from_millis(3430),
+        std::time::Duration::from_millis(3710),
+        std::time::Duration::from_millis(4010),
+        std::time::Duration::from_millis(4360),
+        std::time::Duration::from_millis(4750),
+        std::time::Duration::from_millis(5180),
+        std::time::Duration::from_millis(5680),
+        std::time::Duration::from_millis(6240),
+        std::time::Duration::from_millis(6890),
+        std::time::Duration::from_millis(7630),
+        std::time::Duration::from_millis(8500),
+        std::time::Duration::from_millis(9500),
+        std::time::Duration::from_millis(10700),
+        std::time::Duration::from_millis(12100),
+        std::time::Duration::from_millis(13700),
+        std::time::Duration::from_millis(15600),
+        std::time::Duration::from_millis(17900),
+        std::time::Duration::from_millis(20700),
+    ];
+    static ref LEVEL_LUT: Vec<f32> = vec![
+        -120.0, -68.0, -56.0, -48.9, -43.9, -40.0, -36.9, -34.2, -31.9, -29.8, -28.0, -26.3, -24.8,
+        -23.4, -22.1, -20.9, -19.8, -18.8, -17.8, -16.8, -15.9, -15.1, -14.3, -13.5, -12.8, -12.1,
+        -11.4, -10.7, -10.1, -9.5, -8.9, -8.3, -7.8, -7.2, -6.7, -6.2, -5.7, -5.3, -4.8, -4.3,
+        -3.9, -3.5, -3.0, -2.6, -2.2, -1.8, -1.5, -1.1, -0.7, -0.4, 0.0,
+    ];
+}
+
+pub fn duration_to_value(t: std::time::Duration, lut: &[std::time::Duration]) -> Value {
+    assert_eq!(lut.len(), 51);
+    if lut[0] > t {
+        return Value::from_deluge_val(0);
+    }
+    let mut ix = 1;
+    while ix < lut.len() {
+        let a_val = lut[ix - 1];
+        let b_val = lut[ix];
+        assert!(b_val > a_val);
+        if b_val > t {
+            // Some LERPing
+            let d = (t - a_val).as_secs_f32() / (b_val - a_val).as_secs_f32();
+            assert!((0.0..=1.0).contains(&d));
+            let v = (ix - 1) as f32 + d;
+            let ratio = (v - 25.0) / 25.0;
+            let iv = (ratio * i32::MAX as f32).round() as i32;
+            return Value(iv as u32);
+        }
+        ix += 1;
+    }
+    Value::from_deluge_val(50)
+}
+
+pub fn level_to_value(l: f32, lut: &[f32]) -> Value {
+    assert_eq!(lut.len(), 51);
+    if lut[0] > l {
+        return Value::from_deluge_val(0);
+    }
+    let mut ix = 1;
+    while ix < lut.len() {
+        let a_val = lut[ix - 1];
+        let b_val = lut[ix];
+        assert!(b_val > a_val);
+        if b_val > l {
+            // Some LERPing
+            let d = (l - a_val) / (b_val - a_val);
+            assert!((0.0..=1.0).contains(&d));
+            let v = (ix - 1) as f32 + d;
+            let ratio = (v - 25.0) / 25.0;
+            let iv = (ratio * i32::MAX as f32).round() as i32;
+            return Value(iv as u32);
+        }
+        ix += 1;
+    }
+    Value::from_deluge_val(50)
+}
+
+pub fn attack_to_value(t: std::time::Duration) -> Value {
+    duration_to_value(t, &ATTACK_LUT)
+}
+
+pub fn decay_to_value(t: std::time::Duration) -> Value {
+    duration_to_value(t, &DECAY_LUT)
+}
+
+pub fn sustain_to_value(l: f32) -> Value {
+    level_to_value(l, &LEVEL_LUT)
+}
+
+pub fn release_to_value(t: std::time::Duration) -> Value {
+    duration_to_value(t, &RELEASE_LUT)
+}
+
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub struct Value(pub u32);
 

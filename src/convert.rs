@@ -56,10 +56,10 @@ pub fn soundfont_to_deluge(
     // Map zones to oscs
     let mut oscs = vec![];
     let mut taken = HashSet::new();
-    let mut attack_vol = vec![];
-    let mut decay_vol = vec![];
+    let mut attack_time = vec![];
+    let mut decay_time = vec![];
     let mut sustain_vol = vec![];
-    let mut release_vol = vec![];
+    let mut release_time = vec![];
     loop {
         let mut osc = (LoopMode::NoLoop, vec![]);
         // Find next adjacent
@@ -71,12 +71,12 @@ pub fn soundfont_to_deluge(
                 }
                 if let Some(g) = get_zone_generator!(zone, Generator::AttackVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
-                        attack_vol.push(s);
+                        attack_time.push(s);
                     }
                 }
                 if let Some(g) = get_zone_generator!(zone, Generator::DecayVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
-                        decay_vol.push(s);
+                        decay_time.push(s);
                     }
                 }
                 if let Some(g) = get_zone_generator!(zone, Generator::SustainVolEnv(_)) {
@@ -86,15 +86,21 @@ pub fn soundfont_to_deluge(
                 }
                 if let Some(g) = get_zone_generator!(zone, Generator::ReleaseVolEnv(_)) {
                     if let Some(Unit::Seconds(s)) = g.value() {
-                        release_vol.push(s);
+                        release_time.push(s);
                     }
                 }
-                if let Some(Generator::SampleModes(loop_mode)) = get_zone_generator!(zone, Generator::SampleModes(_)) {
+                if let Some(Generator::SampleModes(loop_mode)) =
+                    get_zone_generator!(zone, Generator::SampleModes(_))
+                {
                     osc.0 = loop_mode;
                 }
-                if let Some(Generator::KeyRange(low, high)) = get_zone_generator!(zone, Generator::KeyRange(_, _)) {
+                if let Some(Generator::KeyRange(low, high)) =
+                    get_zone_generator!(zone, Generator::KeyRange(_, _))
+                {
                     let mut sample_name = None;
-                    if let Some(Generator::SampleID(sample_id)) = get_zone_generator!(zone, Generator::SampleID(_)) {
+                    if let Some(Generator::SampleID(sample_id)) =
+                        get_zone_generator!(zone, Generator::SampleID(_))
+                    {
                         let sample = &sf.samples[sample_id as usize];
                         sample_name = Some(sample.name.clone());
                     }
@@ -234,29 +240,58 @@ pub fn soundfont_to_deluge(
             default_params_builder.osc2_volume(deluge::Value(0x7FFFFFFF));
         }
     }
+    println!("==== {} ====", preset.name);
+    let attack_duration = std::time::Duration::from_secs_f32(if !attack_time.is_empty() {
+        attack_time.iter().sum::<f32>() / attack_time.len() as f32
+    } else {
+        0.0
+    });
     println!(
-        "attack: {} s",
-        attack_vol.iter().sum::<f32>() / attack_vol.len() as f32
+        "attack: {:?}, {}, {:?}",
+        attack_duration,
+        deluge::attack_to_value(attack_duration).to_deluge_val(),
+        attack_time
     );
+    let decay_duration = std::time::Duration::from_secs_f32(if !decay_time.is_empty() {
+        decay_time.iter().sum::<f32>() / decay_time.len() as f32
+    } else {
+        0.0
+    });
     println!(
-        "decay: {} s",
-        decay_vol.iter().sum::<f32>() / decay_vol.len() as f32
+        "decay: {:?}, {}, {:?}",
+        decay_duration,
+        deluge::decay_to_value(decay_duration).to_deluge_val(),
+        decay_time
     );
-    println!(
-        "sustain: {} dB",
+    let sustain_level = if !sustain_vol.is_empty() {
         sustain_vol.iter().sum::<f32>() / sustain_vol.len() as f32
-    );
+    } else {
+        0.0
+    };
     println!(
-        "release: {} s",
-        release_vol.iter().sum::<f32>() / release_vol.len() as f32
+        "sustain: {} dB, {}, {:?}",
+        sustain_level,
+        deluge::sustain_to_value(-sustain_level).to_deluge_val(),
+        sustain_vol
+    );
+    let release_duration = std::time::Duration::from_secs_f32(if !release_time.is_empty() {
+        release_time.iter().sum::<f32>() / release_time.len() as f32
+    } else {
+        0.0
+    });
+    println!(
+        "release: {:?}, {}, {:?}",
+        release_duration,
+        deluge::release_to_value(release_duration).to_deluge_val(),
+        release_time
     );
     // Set the amp envelope to have attack 50, decay 25, sustain 50, release 25
     default_params_builder.envelope1(
         deluge::EnvelopeBuilder::default()
-            .attack(deluge::Value(0x80000000))
-            .decay(deluge::Value(0x00000000))
-            .sustain(deluge::Value(0x7FFFFFD2))
-            .release(deluge::Value(0x00000000))
+            .attack(deluge::attack_to_value(attack_duration))
+            .decay(deluge::decay_to_value(decay_duration))
+            .sustain(deluge::sustain_to_value(-sustain_level))
+            .release(deluge::release_to_value(release_duration))
             .build()
             .unwrap(),
     );

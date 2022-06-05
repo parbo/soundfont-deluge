@@ -270,6 +270,7 @@ dependencies = [
  "clap",
  "derive_builder",
  "env_logger",
+ "lazy_static",
  "log",
  "riff",
  "wav",
