@@ -176,82 +176,77 @@ impl AkaiProgram {
         todo.push_back((chunk, 1));
         let mut zones = vec![];
         let mut mods = None;
-        loop {
-            match todo.pop_back() {
-                Some((c, indent)) => {
-                    debug!(
-                        "{chr:>indent$}Child: id: {}, len: {}",
-                        c.id(),
-                        c.len(),
-                        indent = 2 * indent,
-                        chr = ' '
-                    );
-                    match c.id().value {
-                        RIFF => {
-                            for child in c.iter(file) {
-                                todo.push_back((child, indent + 1));
-                            }
-                        }
-                        KGRP => {
-                            for child in c.iter_no_type(file) {
-                                todo.push_back((child, indent + 1));
-                            }
-                        }
-                        ZONE => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            if let Ok(zone) = reader.read_be::<Zone>() {
-                                debug!(
-                                    "{chr:>indent$}Zone: {}",
-                                    make_string(&zone.sample_name),
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                zones.push(zone);
-                            }
-                        }
-                        MODS => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            if let Ok(m) = reader.read_be::<Mods>() {
-                                debug!(
-                                    "{chr:>indent$}Mods: {:?}",
-                                    m,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                assert!(mods.is_none());
-                                mods = Some(m);
-                            }
-                        }
-                        FILT => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            if let Ok(filter) = reader.read_be::<Filter>() {
-                                debug!(
-                                    "{chr:>indent$}Filter: {:?}",
-                                    filter,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            }
-                        }
-                        ENV => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            if let Ok(env) = reader.read_be::<Envelope>() {
-                                debug!(
-                                    "{chr:>indent$}Envelope: {:?}",
-                                    env,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            }
-                        }
-                        _ => {}
+        while let Some((c, indent)) = todo.pop_back() {
+            debug!(
+                "{chr:>indent$}Child: id: {}, len: {}",
+                c.id(),
+                c.len(),
+                indent = 2 * indent,
+                chr = ' '
+            );
+            match c.id().value {
+                RIFF => {
+                    for child in c.iter(file) {
+                        todo.push_back((child, indent + 1));
                     }
                 }
-                None => break,
+                KGRP => {
+                    for child in c.iter_no_type(file) {
+                        todo.push_back((child, indent + 1));
+                    }
+                }
+                ZONE => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(zone) = reader.read_be::<Zone>() {
+                        debug!(
+                            "{chr:>indent$}Zone: {}",
+                            make_string(&zone.sample_name),
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        zones.push(zone);
+                    }
+                }
+                MODS => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(m) = reader.read_be::<Mods>() {
+                        debug!(
+                            "{chr:>indent$}Mods: {:?}",
+                            m,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        assert!(mods.is_none());
+                        mods = Some(m);
+                    }
+                }
+                FILT => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(filter) = reader.read_be::<Filter>() {
+                        debug!(
+                            "{chr:>indent$}Filter: {:?}",
+                            filter,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    }
+                }
+                ENV => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(env) = reader.read_be::<Envelope>() {
+                        debug!(
+                            "{chr:>indent$}Envelope: {:?}",
+                            env,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    }
+                }
+                _ => {}
             }
         }
 

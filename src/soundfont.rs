@@ -494,186 +494,181 @@ impl SoundFont {
         let mut pmods = vec![];
         let mut ibags = vec![];
         let mut pbags = vec![];
-        loop {
-            match todo.pop_back() {
-                Some((c, indent)) => {
+        while let Some((c, indent)) = todo.pop_back() {
+            debug!(
+                "{chr:>indent$}Child: id: {}, len: {}",
+                c.id(),
+                c.len(),
+                indent = 2 * indent,
+                chr = ' '
+            );
+            match c.id().value {
+                RIFF | LIST | SDTA => {
+                    for child in c.iter(file) {
+                        todo.push_back((child, indent + 1));
+                    }
+                }
+                IFIL | IVER => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    if let Ok(version) = reader.read_ne::<Version>() {
+                        debug!(
+                            "{chr:>indent$}Version: {}.{}",
+                            version.major,
+                            version.minor,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    }
+                }
+                INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
+                    let data = c.read_contents(file).unwrap();
+                    if let Ok(name) = String::from_utf8(data) {
+                        debug!(
+                            "{chr:>indent$}Name: {}",
+                            name,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                    } else {
+                        warn!("invalid utf-8!");
+                    }
+                }
+                SMPL => {
+                    sample_data = c.read_contents(file).unwrap();
                     debug!(
-                        "{chr:>indent$}Child: id: {}, len: {}",
-                        c.id(),
-                        c.len(),
-                        indent = 2 * indent,
+                        "{chr:>indent$}Samples: {}",
+                        c.len() / 2,
+                        indent = 2 * (indent + 1),
                         chr = ' '
                     );
-                    match c.id().value {
-                        RIFF | LIST | SDTA => {
-                            for child in c.iter(file) {
-                                todo.push_back((child, indent + 1));
-                            }
-                        }
-                        IFIL | IVER => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            if let Ok(version) = reader.read_ne::<Version>() {
-                                debug!(
-                                    "{chr:>indent$}Version: {}.{}",
-                                    version.major,
-                                    version.minor,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            }
-                        }
-                        INAM | ISFT | IENG | ICOP | ISNG | IROM | ICRD | IPRD | ICMT => {
-                            let data = c.read_contents(file).unwrap();
-                            if let Ok(name) = String::from_utf8(data) {
-                                debug!(
-                                    "{chr:>indent$}Name: {}",
-                                    name,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                            } else {
-                                warn!("invalid utf-8!");
-                            }
-                        }
-                        SMPL => {
-                            sample_data = c.read_contents(file).unwrap();
+                }
+                SHDR => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(sample) = reader.read_ne::<Sample>() {
+                        if !sample.name.starts_with("EOS") {
                             debug!(
-                                "{chr:>indent$}Samples: {}",
-                                c.len() / 2,
+                                "{chr:>indent$}Sample: {}",
+                                sample.name,
                                 indent = 2 * (indent + 1),
                                 chr = ' '
                             );
                         }
-                        SHDR => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(sample) = reader.read_ne::<Sample>() {
-                                if !sample.name.starts_with("EOS") {
-                                    debug!(
-                                        "{chr:>indent$}Sample: {}",
-                                        sample.name,
-                                        indent = 2 * (indent + 1),
-                                        chr = ' '
-                                    );
-                                }
-                                samples.push(sample);
-                            }
-                        }
-                        PHDR => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(preset) = reader.read_ne::<Preset>() {
-                                if !preset.name.starts_with("EOP") {
-                                    debug!(
-                                        "{chr:>indent$}Preset: {}",
-                                        preset.name,
-                                        indent = 2 * (indent + 1),
-                                        chr = ' '
-                                    );
-                                }
-                                presets.push(preset);
-                            }
-                        }
-                        INST => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(instrument) = reader.read_ne::<Instrument>() {
-                                if !instrument.name.starts_with("EOI") {
-                                    debug!(
-                                        "{chr:>indent$}Instrument: {}",
-                                        instrument.name,
-                                        indent = 2 * (indent + 1),
-                                        chr = ' '
-                                    );
-                                }
-                                instruments.push(instrument);
-                            }
-                        }
-                        IGEN => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(generator) = reader.read_ne::<GeneratorData>() {
-                                debug!(
-                                    "{chr:>indent$}Instrument Generator: {:?}, {:?}",
-                                    generator.oper,
-                                    generator.amount,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                igens.push(parse_generator(generator.oper, generator.amount));
-                            }
-                        }
-                        PGEN => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(generator) = reader.read_ne::<GeneratorData>() {
-                                debug!(
-                                    "{chr:>indent$}Instrument Generator: {:?}, {:?}",
-                                    generator.oper,
-                                    generator.amount,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                pgens.push(parse_generator(generator.oper, generator.amount));
-                            }
-                        }
-                        IMOD => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(mod_list) = reader.read_ne::<ModList>() {
-                                debug!(
-                                    "{chr:>indent$}Instrument ModList: {:?}",
-                                    mod_list,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                imods.push(mod_list);
-                            }
-                        }
-                        PMOD => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(mod_list) = reader.read_ne::<ModList>() {
-                                debug!(
-                                    "{chr:>indent$}Preset ModList: {:?}",
-                                    mod_list,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                pmods.push(mod_list);
-                            }
-                        }
-                        IBAG => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(bag) = reader.read_ne::<Bag>() {
-                                debug!(
-                                    "{chr:>indent$}Instrument Bag: {:?}",
-                                    bag,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                ibags.push(bag);
-                            }
-                        }
-                        PBAG => {
-                            let data = c.read_contents(file).unwrap();
-                            let mut reader = Cursor::new(data);
-                            while let Ok(bag) = reader.read_ne::<Bag>() {
-                                debug!(
-                                    "{chr:>indent$}Preset Bag: {:?}",
-                                    bag,
-                                    indent = 2 * (indent + 1),
-                                    chr = ' '
-                                );
-                                pbags.push(bag);
-                            }
-                        }
-                        _ => {}
+                        samples.push(sample);
                     }
                 }
-                None => break,
+                PHDR => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(preset) = reader.read_ne::<Preset>() {
+                        if !preset.name.starts_with("EOP") {
+                            debug!(
+                                "{chr:>indent$}Preset: {}",
+                                preset.name,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                        }
+                        presets.push(preset);
+                    }
+                }
+                INST => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(instrument) = reader.read_ne::<Instrument>() {
+                        if !instrument.name.starts_with("EOI") {
+                            debug!(
+                                "{chr:>indent$}Instrument: {}",
+                                instrument.name,
+                                indent = 2 * (indent + 1),
+                                chr = ' '
+                            );
+                        }
+                        instruments.push(instrument);
+                    }
+                }
+                IGEN => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(generator) = reader.read_ne::<GeneratorData>() {
+                        debug!(
+                            "{chr:>indent$}Instrument Generator: {:?}, {:?}",
+                            generator.oper,
+                            generator.amount,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        igens.push(parse_generator(generator.oper, generator.amount));
+                    }
+                }
+                PGEN => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(generator) = reader.read_ne::<GeneratorData>() {
+                        debug!(
+                            "{chr:>indent$}Instrument Generator: {:?}, {:?}",
+                            generator.oper,
+                            generator.amount,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        pgens.push(parse_generator(generator.oper, generator.amount));
+                    }
+                }
+                IMOD => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(mod_list) = reader.read_ne::<ModList>() {
+                        debug!(
+                            "{chr:>indent$}Instrument ModList: {:?}",
+                            mod_list,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        imods.push(mod_list);
+                    }
+                }
+                PMOD => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(mod_list) = reader.read_ne::<ModList>() {
+                        debug!(
+                            "{chr:>indent$}Preset ModList: {:?}",
+                            mod_list,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        pmods.push(mod_list);
+                    }
+                }
+                IBAG => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(bag) = reader.read_ne::<Bag>() {
+                        debug!(
+                            "{chr:>indent$}Instrument Bag: {:?}",
+                            bag,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        ibags.push(bag);
+                    }
+                }
+                PBAG => {
+                    let data = c.read_contents(file).unwrap();
+                    let mut reader = Cursor::new(data);
+                    while let Ok(bag) = reader.read_ne::<Bag>() {
+                        debug!(
+                            "{chr:>indent$}Preset Bag: {:?}",
+                            bag,
+                            indent = 2 * (indent + 1),
+                            chr = ' '
+                        );
+                        pbags.push(bag);
+                    }
+                }
+                _ => {}
             }
         }
 
@@ -711,10 +706,8 @@ impl SoundFont {
             let next_preset = &self.presets[ix + 1];
             next_preset.bag_index as usize
         };
-        let mut zone = 0;
-        for bag_ix in bag_start..bag_end {
-            info!("  Preset zone {}:", zone);
-            zone = zone + 1;
+        for (zone, bag_ix) in (bag_start..bag_end).enumerate() {
+            info!("  Preset zone {}:", zone + 1);
             let is_last = ix == self.pbags.len() - 1;
             let bag = &self.pbags[bag_ix];
             let gen_start = bag.gen_ndx as usize;
@@ -762,10 +755,8 @@ impl SoundFont {
             let next_instrument = &self.instruments[ix + 1];
             next_instrument.bag_index as usize
         };
-        let mut zone = 0;
-        for bag_ix in bag_start..bag_end {
-            info!("        Instrument zone {}:", zone);
-            zone = zone + 1;
+        for (zone, bag_ix) in (bag_start..bag_end).enumerate() {
+            info!("        Instrument zone {}:", zone + 1);
             let is_last = ix == self.ibags.len() - 1;
             let bag = &self.ibags[bag_ix];
             let gen_start = bag.gen_ndx as usize;
@@ -844,7 +835,7 @@ impl SoundFont {
                         let low = self.sample_data[ix as usize] as i16;
                         let high = self.sample_data[(ix + 1) as usize] as i16;
                         out.push(high << 8 | low);
-                        ix = ix + 2;
+                        ix += 2;
                         if ix >= 2 * sample.end {
                             break;
                         }

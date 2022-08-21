@@ -1262,16 +1262,14 @@ impl Sound {
                 '<' => {
                     if in_string {
                         out.push(c);
-                    } else {
-                        if chars.peek() == Some(&'/') {
-                            if out.chars().last() == Some('\t') {
-                                out.pop();
-                            }
-                            out.push(c);
-                        } else {
-                            out.push(c);
-                            indent_level += 1;
+                    } else if chars.peek() == Some(&'/') {
+                        if out.ends_with('\t') {
+                            out.pop();
                         }
+                        out.push(c);
+                    } else {
+                        out.push(c);
+                        indent_level += 1;
                     }
                 }
                 '/' => {
@@ -1285,19 +1283,13 @@ impl Sound {
                     out.push(c);
                 }
                 ' ' => {
-                    if in_string {
+                    if in_string || chars.peek() == Some(&'/') {
                         out.push(c);
+                    } else if indent_level > 0 {
+                        out.push('\n');
+                        out.push_str(&"\t".repeat(indent_level as usize));
                     } else {
-                        if chars.peek() == Some(&'/') {
-                            out.push(c);
-                        } else {
-                            if indent_level > 0 {
-                                out.push('\n');
-                                out.push_str(&"\t".repeat(indent_level as usize));
-                            } else {
-                                out.push(c);
-                            }
-                        }
+                        out.push(c);
                     }
                 }
                 _ => {
