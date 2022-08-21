@@ -305,7 +305,7 @@ pub fn soundfont_to_deluge(
     sound_builder.default_params(default_params_builder.build().unwrap());
     let mut preset_name = prefix.to_owned();
     preset_name.push_str(&preset.name);
-    sound_builder.name(preset.name.to_owned());
+    sound_builder.name(preset_name.to_owned());
     sound_builder.build().unwrap()
 }
 
