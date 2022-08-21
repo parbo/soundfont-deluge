@@ -94,8 +94,9 @@ pub fn soundfont_to_deluge(
                 {
                     osc.0 = loop_mode;
                 }
-                if let Some(Generator::KeyRange(low, high)) =
+                if let Generator::KeyRange(low, high) =
                     get_zone_generator!(zone, Generator::KeyRange(_, _))
+                        .unwrap_or(Generator::KeyRange(0, 127))
                 {
                     let mut sample_name = None;
                     if let Some(Generator::SampleID(sample_id)) =
