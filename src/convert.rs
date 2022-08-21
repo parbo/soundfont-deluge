@@ -1,7 +1,6 @@
 use crate::deluge;
 use crate::soundfont::{Generator, LoopMode, SoundFont, Unit};
 use log::{info, warn};
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -34,7 +33,7 @@ pub fn soundfont_to_deluge(
         let next_preset = &sf.presets[ix + 1];
         next_preset.bag_index as usize
     };
-    let mut zones = vec![];
+    let mut instruments = vec![];
     for bag_ix in bag_start..bag_end {
         let is_last = ix == sf.pbags.len() - 1;
         let bag = &sf.pbags[bag_ix];
@@ -49,97 +48,104 @@ pub fn soundfont_to_deluge(
             let gen = &sf.pgens[gen_ix];
             if let Generator::Instrument(index) = gen {
                 let mut gens = get_instrument_zones(sf, *index as usize);
-                zones.append(&mut gens);
+		// Sort on key range
+		gens.sort_by(|a, b| {
+		    let a_r = if let Some(Generator::KeyRange(low, high)) =
+			get_zone_generator!(a, Generator::KeyRange(_, _)) {
+			    (low, high)
+			} else {
+			    (0, 127)
+			};
+		    let b_r = if let Some(Generator::KeyRange(low, high)) =
+			get_zone_generator!(b, Generator::KeyRange(_, _)) {
+			    (low, high)
+			} else {
+			    (0, 127)
+			};
+		    a_r.cmp(&b_r)
+		});
+                instruments.push(gens);
             }
         }
     }
-    // Map zones to oscs
+    for inst in &instruments {
+	info!("instrument: {:?}", inst);
+    }
+    // Map instruments to oscs
     let mut oscs = vec![];
-    let mut taken = HashSet::new();
     let mut attack_time = vec![];
     let mut decay_time = vec![];
     let mut sustain_vol = vec![];
     let mut release_time = vec![];
-    loop {
+    for (instrument_ix, zones) in instruments.iter().enumerate() {
         let mut osc = (LoopMode::NoLoop, vec![]);
-        // Find next adjacent
-        loop {
-            let mut found = false;
-            for (zone_ix, zone) in zones.iter().enumerate() {
-                if taken.contains(&zone_ix) {
-                    continue;
-                }
-                if let Some(g) = get_zone_generator!(zone, Generator::AttackVolEnv(_)) {
-                    if let Some(Unit::Seconds(s)) = g.value() {
-                        attack_time.push(s);
-                    }
-                }
-                if let Some(g) = get_zone_generator!(zone, Generator::DecayVolEnv(_)) {
-                    if let Some(Unit::Seconds(s)) = g.value() {
-                        decay_time.push(s);
-                    }
-                }
-                if let Some(g) = get_zone_generator!(zone, Generator::SustainVolEnv(_)) {
-                    if let Some(Unit::Level(lvl)) = g.value() {
-                        sustain_vol.push(lvl);
-                    }
-                }
-                if let Some(g) = get_zone_generator!(zone, Generator::ReleaseVolEnv(_)) {
-                    if let Some(Unit::Seconds(s)) = g.value() {
-                        release_time.push(s);
-                    }
-                }
-                if let Some(Generator::SampleModes(loop_mode)) =
-                    get_zone_generator!(zone, Generator::SampleModes(_))
-                {
-                    osc.0 = loop_mode;
-                }
-                if let Generator::KeyRange(low, high) =
-                    get_zone_generator!(zone, Generator::KeyRange(_, _))
-                        .unwrap_or(Generator::KeyRange(0, 127))
-                {
-                    let mut sample_name = None;
-                    if let Some(Generator::SampleID(sample_id)) =
-                        get_zone_generator!(zone, Generator::SampleID(_))
-                    {
-                        let sample = &sf.samples[sample_id as usize];
-                        sample_name = Some(sample.name.clone());
-                    }
-                    // TODO: check fine tune too
-                    let mut root_note = None;
-                    if let Some(Generator::OverridingRootKey(root)) =
-                        get_zone_generator!(zone, Generator::OverridingRootKey(_))
-                    {
-                        root_note = Some(root);
-                    }
-                    if osc.1.is_empty() {
-                        osc.1.push((zone_ix, low, high, sample_name, root_note));
-                        taken.insert(zone_ix);
-                        found = true;
-                    } else {
-                        let (_prev_zone, _prev_low, prev_high, prev_sample_name, prev_root_note) =
-                            osc.1.last_mut().unwrap();
-                        if *prev_high + 1 == low {
-                            taken.insert(zone_ix);
-                            found = true;
-                            if sample_name != *prev_sample_name || root_note != *prev_root_note {
-                                // Add the new sample
-                                osc.1.push((zone_ix, low, high, sample_name, root_note));
-                            } else {
-                                // Just extend previous range. In soundfonts, each range can have different params, but in deluge they can't.
-                                *prev_high = high;
-                            }
-                        }
-                    }
-                }
+	for (zone_ix, zone) in zones.iter().enumerate() {
+            if let Some(g) = get_zone_generator!(zone, Generator::AttackVolEnv(_)) {
+		if let Some(Unit::Seconds(s)) = g.value() {
+                    attack_time.push(s);
+		}
             }
-            if !found {
-                break;
+            if let Some(g) = get_zone_generator!(zone, Generator::DecayVolEnv(_)) {
+		if let Some(Unit::Seconds(s)) = g.value() {
+                    decay_time.push(s);
+		}
             }
-        }
-        if osc.1.is_empty() {
-            break;
-        }
+            if let Some(g) = get_zone_generator!(zone, Generator::SustainVolEnv(_)) {
+		if let Some(Unit::Level(lvl)) = g.value() {
+                    sustain_vol.push(lvl);
+		}
+            }
+            if let Some(g) = get_zone_generator!(zone, Generator::ReleaseVolEnv(_)) {
+		if let Some(Unit::Seconds(s)) = g.value() {
+                    release_time.push(s);
+		}
+            }
+            if let Some(Generator::SampleModes(loop_mode)) =
+		get_zone_generator!(zone, Generator::SampleModes(_))
+            {
+		osc.0 = loop_mode;
+            }
+            if let Generator::KeyRange(low, high) =
+		get_zone_generator!(zone, Generator::KeyRange(_, _))
+                .unwrap_or(Generator::KeyRange(0, 127))
+            {
+		let mut sample_name = None;
+		if let Some(Generator::SampleID(sample_id)) =
+                    get_zone_generator!(zone, Generator::SampleID(_))
+		{
+                    let sample = &sf.samples[sample_id as usize];
+                    sample_name = Some(sample.name.clone());
+		}
+		if sample_name.is_none() {
+		    continue;
+		}
+		// TODO: check fine tune too
+		let mut root_note = None;
+		if let Some(Generator::OverridingRootKey(root)) =
+                    get_zone_generator!(zone, Generator::OverridingRootKey(_))
+		{
+                    root_note = Some(root);
+		}
+		if root_note.is_none() {
+		    continue;
+		}
+		if osc.1.is_empty() {
+                    osc.1.push((instrument_ix, zone_ix, low, high, sample_name, root_note));
+		} else {
+                    let (_prev_inst, _prev_zone, _prev_low, prev_high, prev_sample_name, prev_root_note) =
+			osc.1.last_mut().unwrap();
+		    if sample_name != *prev_sample_name || root_note != *prev_root_note {
+			// Adjust range so there are no gaps
+			*prev_high = low;
+                        // Add the new sample
+                        osc.1.push((instrument_ix, zone_ix, low, high, sample_name, root_note));
+		    } else {
+                        // Just extend previous range. In soundfonts, each range can have different params, but in deluge they can't.
+                        *prev_high = high;
+		    }
+		}
+            }
+	}
         info!("osc: {:?}", osc);
         oscs.push(osc);
     }
@@ -173,14 +179,14 @@ pub fn soundfont_to_deluge(
         }
         let single_sample = osc.len() == 1;
         let mut sample_ranges = vec![];
-        for (ix, (o, _low, high, _sample_name, _root)) in osc.iter().enumerate() {
+        for (ix,  (i, o, _low, high, _sample_name, _root)) in osc.iter().enumerate() {
             let mut sample_range_builder = deluge::SampleRangeBuilder::default();
             // The last sample must _not_ have range_top_note!
             if ix != osc.len() - 1 {
                 sample_range_builder.range_top_note(Some(*high as i32));
             }
             if let Some(Generator::OverridingRootKey(root)) =
-                get_zone_generator!(&zones[*o], Generator::OverridingRootKey(_))
+                get_zone_generator!(&instruments[*i][*o], Generator::OverridingRootKey(_))
             {
                 if single_sample {
                     osc_builder.transpose(Some((60 - root).into()));
@@ -189,7 +195,7 @@ pub fn soundfont_to_deluge(
                 }
             }
             if let Some(Generator::FineTune(cents)) =
-                get_zone_generator!(&zones[*o], Generator::FineTune(_))
+                get_zone_generator!(&instruments[*i][*o], Generator::FineTune(_))
             {
                 if single_sample {
                     osc_builder.cents(Some(cents.into()));
@@ -198,7 +204,7 @@ pub fn soundfont_to_deluge(
                 }
             }
             if let Some(Generator::SampleID(sample_id)) =
-                get_zone_generator!(&zones[*o], Generator::SampleID(_))
+                get_zone_generator!(&instruments[*i][*o], Generator::SampleID(_))
             {
                 let sample = &sf.samples[sample_id as usize];
                 let name = format!("{} - {}.wav", sample_id, SoundFont::safe_name(&sample.name));
