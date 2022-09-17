@@ -2,7 +2,7 @@
 name = "soundfont-deluge"
 version = "0.1.0"
 authors = ["Pär Bohrarper <par.bohrarper@gmail.com>"]
-edition = "2018"
+edition = "2021"
 
 [workspace]
 
