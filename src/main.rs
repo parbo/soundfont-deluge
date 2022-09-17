@@ -9,6 +9,7 @@ pub mod akp;
 pub mod convert;
 pub mod deluge;
 pub mod soundfont;
+pub mod wav;
 
 use akp::AkaiProgram;
 use clap::{App, Arg};

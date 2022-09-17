@@ -1,3 +1,4 @@
+use crate::wav;
 use binread::*;
 use log::{debug, error, info, warn};
 use std::collections::VecDeque;
@@ -823,24 +824,27 @@ impl SoundFont {
                         "saving sample {}, sample rate: {}",
                         sample.name, sample.sample_rate
                     );
-                    let h = wav::Header::new(wav::WAV_FORMAT_PCM, 1, sample.sample_rate, 16);
+                    let h = wav::Header::new(1, sample.sample_rate);
+                    let s = wav::SampleChunk::new(
+                        sample.sample_rate,
+                        sample.start_loop - sample.start,
+                        sample.end_loop - sample.start,
+                    );
                     let name = format!("{} - {}.wav", ix, SoundFont::safe_name(&sample.name));
                     let file_path = folder.join(name);
                     info!("file path: {}", file_path.display());
                     let mut out_file = fs::File::create(file_path)?;
                     info!("created file!");
                     let mut out = vec![];
+                    out.reserve(self.sample_data.len() / 2);
                     let mut ix = sample.start * 2;
-                    loop {
-                        let low = self.sample_data[ix as usize] as i16;
-                        let high = self.sample_data[(ix + 1) as usize] as i16;
-                        out.push(high << 8 | low);
+                    while ix +2 <= sample.end * 2 {
+                        let low = self.sample_data[ix as usize];
+                        let high = self.sample_data[(ix + 1) as usize];
+                        out.push(i16::from_le_bytes([low, high]));
                         ix += 2;
-                        if ix >= 2 * sample.end {
-                            break;
-                        }
                     }
-                    wav::write(h, &wav::BitDepth::Sixteen(out), &mut out_file)?;
+                    wav::write(h, &out, &s, &mut out_file)?;
                 }
                 _ => {
                     warn!(
