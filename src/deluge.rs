@@ -1317,7 +1317,7 @@ mod tests {
     fn test_osc_type() {
         let s = "<type>saw</type>";
         let expected = OscType::Saw;
-        let parsed: OscType = from_str(&s).unwrap();
+        let parsed: OscType = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
@@ -1331,7 +1331,7 @@ mod tests {
             .retrig_phase(Some(-1))
             .build()
             .unwrap();
-        let parsed: Osc = from_str(&s).unwrap();
+        let parsed: Osc = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
@@ -1339,7 +1339,7 @@ mod tests {
     fn test_lfo_type() {
         let xml = "<type>sine</type>";
         let value = LfoType::Sine;
-        let parsed: LfoType = from_str(&xml).unwrap();
+        let parsed: LfoType = from_str(xml).unwrap();
         assert_eq!(parsed, value);
     }
 
@@ -1350,7 +1350,7 @@ mod tests {
             lfo_type: LfoType::Triangle,
             sync_level: Some(0),
         };
-        let parsed: Lfo = from_str(&s).unwrap();
+        let parsed: Lfo = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
@@ -1363,7 +1363,7 @@ mod tests {
             sustain: Value(0x7FFFFFFF),
             release: Value(0x80000000),
         };
-        let parsed: Envelope = from_str(&s).unwrap();
+        let parsed: Envelope = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
@@ -1375,7 +1375,7 @@ mod tests {
             destination: Destination::Volume,
             amount: Value(0x3FFFFFE8),
         };
-        let parsed: PatchCable = from_str(&s).unwrap();
+        let parsed: PatchCable = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
@@ -1389,7 +1389,7 @@ mod tests {
                 amount: Value(0x3FFFFFE8),
             }],
         };
-        let parsed: PatchCables = from_str(&s).unwrap();
+        let parsed: PatchCables = from_str(s).unwrap();
         assert_eq!(parsed, expected);
     }
 
