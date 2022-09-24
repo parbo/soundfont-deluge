@@ -86,6 +86,12 @@ impl From<&SampleLoop> for [u8; 24] {
     }
 }
 
+impl From<SampleLoop> for [u8; 24] {
+    fn from(s: SampleLoop) -> Self {
+        (&s).into()
+    }
+}
+
 #[derive(Debug, Default, Clone, Hash, PartialEq, Eq)]
 pub struct SampleChunk {
     sample_rate: u32,
@@ -123,10 +129,16 @@ impl From<&SampleChunk> for Vec<u8> {
     }
 }
 
+impl From<SampleChunk> for Vec<u8> {
+    fn from(s: SampleChunk) -> Self {
+        (&s).into()
+    }
+}
+
 pub fn write<W>(
     header: Header,
     track: &[i16],
-    sample: &SampleChunk,
+    sample: Option<SampleChunk>,
     writer: &mut W,
 ) -> std::io::Result<()>
 where
@@ -148,18 +160,23 @@ where
     let h_vec: [u8; 16] = header.into();
     let h_dat = riff::ChunkContents::Data(HEADER_ID, Vec::from(h_vec));
 
+    let mut chunks = vec![h_dat];
+
+    if let Some(sample) = sample {
+        let s_vec = sample.into();
+        let s_dat = riff::ChunkContents::Data(SMPL_ID, s_vec);
+        chunks.push(s_dat);
+    }
+
     let mut d_vec: Vec<u8> = Vec::new();
     d_vec.reserve(2 * track.len());
     for sample in track {
         d_vec.extend(sample.to_le_bytes());
     }
     let d_dat = riff::ChunkContents::Data(DATA_ID, d_vec);
+    chunks.push(d_dat);
 
-    let s_vec = sample.into();
-    let s_dat = riff::ChunkContents::Data(SMPL_ID, s_vec);
-
-    let r =
-        riff::ChunkContents::Children(riff::RIFF_ID.clone(), WAVE_ID, vec![h_dat, s_dat, d_dat]);
+    let r = riff::ChunkContents::Children(riff::RIFF_ID.clone(), WAVE_ID, chunks);
 
     r.write(writer)?;
 

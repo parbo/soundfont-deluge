@@ -87,13 +87,9 @@ fn main() {
             println!("dumping");
             sf.dump();
         }
-        let sample_folder = matches.value_of("SAMPLES");
-        if let Some(folder) = sample_folder {
-            sf.save_samples(Path::new(folder)).unwrap();
-        }
         if let Some(xml_folder) = matches.value_of("SYNTH") {
             // TODO: save all xmls
-            // Note: if the samples aren't saved above we use a dummy folder
+            let sample_folder = matches.value_of("SAMPLES");
             let samples = sample_folder.unwrap_or("SAMPLES");
             let prefix = matches.value_of("PREFIX").unwrap_or("");
             for ix in 0..(sf.presets.len() - 1) {

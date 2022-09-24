@@ -80,74 +80,99 @@ pub fn soundfont_to_deluge(
     let mut sustain_vol = vec![];
     let mut release_time = vec![];
     for (instrument_ix, zones) in instruments.iter().enumerate() {
-        let mut osc = (LoopMode::NoLoop, vec![]);
-	for (zone_ix, zone) in zones.iter().enumerate() {
+        let mut osc = vec![];
+        for (zone_ix, zone) in zones.iter().enumerate() {
             if let Some(g) = get_zone_generator!(zone, Generator::AttackVolEnv(_)) {
-		if let Some(Unit::Seconds(s)) = g.value() {
+                if let Some(Unit::Seconds(s)) = g.value() {
                     attack_time.push(s);
-		}
+                }
             }
             if let Some(g) = get_zone_generator!(zone, Generator::DecayVolEnv(_)) {
-		if let Some(Unit::Seconds(s)) = g.value() {
+                if let Some(Unit::Seconds(s)) = g.value() {
                     decay_time.push(s);
-		}
+                }
             }
             if let Some(g) = get_zone_generator!(zone, Generator::SustainVolEnv(_)) {
-		if let Some(Unit::Level(lvl)) = g.value() {
+                if let Some(Unit::Level(lvl)) = g.value() {
                     sustain_vol.push(lvl);
-		}
+                }
             }
             if let Some(g) = get_zone_generator!(zone, Generator::ReleaseVolEnv(_)) {
-		if let Some(Unit::Seconds(s)) = g.value() {
+                if let Some(Unit::Seconds(s)) = g.value() {
                     release_time.push(s);
-		}
-            }
-            if let Some(Generator::SampleModes(loop_mode)) =
-		get_zone_generator!(zone, Generator::SampleModes(_))
-            {
-		osc.0 = loop_mode;
+                }
             }
             if let Generator::KeyRange(low, high) =
-		get_zone_generator!(zone, Generator::KeyRange(_, _))
-                .unwrap_or(Generator::KeyRange(0, 127))
+                get_zone_generator!(zone, Generator::KeyRange(_, _))
+                    .unwrap_or(Generator::KeyRange(0, 127))
             {
-		let mut sample_name = None;
-		if let Some(Generator::SampleID(sample_id)) =
+                let mut sample_name = None;
+                if let Some(Generator::SampleID(sample_id)) =
                     get_zone_generator!(zone, Generator::SampleID(_))
-		{
+                {
                     let sample = &sf.samples[sample_id as usize];
                     sample_name = Some(sample.name.clone());
-		}
-		if sample_name.is_none() {
-		    continue;
-		}
-		// TODO: check fine tune too
-		let mut root_note = None;
-		if let Some(Generator::OverridingRootKey(root)) =
+                }
+                if sample_name.is_none() {
+                    continue;
+                }
+                let loop_mode = if let Some(Generator::SampleModes(loop_mode)) =
+                    get_zone_generator!(zone, Generator::SampleModes(_))
+                {
+                    Some(loop_mode)
+                } else {
+                    None
+                };
+                // TODO: check fine tune too
+                let mut root_note = None;
+                if let Some(Generator::OverridingRootKey(root)) =
                     get_zone_generator!(zone, Generator::OverridingRootKey(_))
-		{
+                {
                     root_note = Some(root);
-		}
-		if root_note.is_none() {
-		    continue;
-		}
-		if osc.1.is_empty() {
-                    osc.1.push((instrument_ix, zone_ix, low, high, sample_name, root_note));
-		} else {
-                    let (_prev_inst, _prev_zone, _prev_low, prev_high, prev_sample_name, prev_root_note) =
-			osc.1.last_mut().unwrap();
-		    if sample_name != *prev_sample_name || root_note != *prev_root_note {
-			// Adjust range so there are no gaps
-			*prev_high = low;
+                }
+                if root_note.is_none() {
+                    continue;
+                }
+                if osc.is_empty() {
+                    osc.push((
+                        instrument_ix,
+                        zone_ix,
+                        low,
+                        high,
+                        sample_name,
+                        root_note,
+                        loop_mode,
+                    ));
+                } else {
+                    let (
+                        _prev_inst,
+                        _prev_zone,
+                        _prev_low,
+                        prev_high,
+                        prev_sample_name,
+                        prev_root_note,
+                        _prev_loop_mode,
+                    ) = osc.last_mut().unwrap();
+                    if sample_name != *prev_sample_name || root_note != *prev_root_note {
+                        // Adjust range so there are no gaps
+                        *prev_high = low;
                         // Add the new sample
-                        osc.1.push((instrument_ix, zone_ix, low, high, sample_name, root_note));
-		    } else {
+                        osc.push((
+                            instrument_ix,
+                            zone_ix,
+                            low,
+                            high,
+                            sample_name,
+                            root_note,
+                            loop_mode,
+                        ));
+                    } else {
                         // Just extend previous range. In soundfonts, each range can have different params, but in deluge they can't.
                         *prev_high = high;
-		    }
-		}
+                    }
+                }
             }
-	}
+        }
         info!("osc: {:?}", osc);
         oscs.push(osc);
     }
@@ -165,7 +190,7 @@ pub fn soundfont_to_deluge(
             preset.name
         );
     }
-    for (loop_mode, osc) in &oscs[0..std::cmp::min(num, 2)] {
+    for osc in &oscs[0..std::cmp::min(num, 2)] {
         ix += 1;
         let mut osc_builder = deluge::OscBuilder::default();
         osc_builder
@@ -176,12 +201,17 @@ pub fn soundfont_to_deluge(
             .reversed(Some(0))
             .time_stretch_enable(Some(0))
             .time_stretch_amount(Some(0));
-        if *loop_mode == LoopMode::ContinuousLoop || *loop_mode == LoopMode::ReleaseLoop {
-            osc_builder.loop_mode(Some(2));
+        if let Some(loop_mode) = osc
+            .iter()
+            .find_map(|(_, _, _, _, _, _, loop_mode)| *loop_mode)
+        {
+            if loop_mode == LoopMode::ContinuousLoop || loop_mode == LoopMode::ReleaseLoop {
+                osc_builder.loop_mode(Some(2));
+            }
         }
         let single_sample = osc.len() == 1;
         let mut sample_ranges = vec![];
-        for (ix,  (i, o, _low, high, _sample_name, _root)) in osc.iter().enumerate() {
+        for (ix, (i, o, _low, high, _sample_name, _root, loop_mode)) in osc.iter().enumerate() {
             let mut sample_range_builder = deluge::SampleRangeBuilder::default();
             // The last sample must _not_ have range_top_note!
             if ix != osc.len() - 1 {
@@ -209,9 +239,12 @@ pub fn soundfont_to_deluge(
                 get_zone_generator!(&instruments[*i][*o], Generator::SampleID(_))
             {
                 let sample = &sf.samples[sample_id as usize];
-                let name = format!("{} - {}.wav", sample_id, SoundFont::safe_name(&sample.name));
-                let file_path: Vec<String> = sample_folder
-                    .join(name)
+                let name = format!("{}.wav", SoundFont::safe_name(&sample.name));
+                let path = sample_folder.join(name);
+                let loop_mode = loop_mode.unwrap_or(LoopMode::NoLoop);
+                sf.save_sample(sample, loop_mode, &path)
+                    .unwrap_or_else(|e| panic!("could not save sample to {:?}, err: {}", path, e));
+                let file_path: Vec<String> = path
                     .components()
                     .map(|x| x.as_os_str().to_str().unwrap().into())
                     .collect();
@@ -223,7 +256,7 @@ pub fn soundfont_to_deluge(
                 // TODO: take generator sample offsets into account
                 let mut zone_builder = deluge::ZoneBuilder::default();
                 zone_builder.end_sample_pos(sample.end - sample.start);
-                if *loop_mode != LoopMode::NoLoop {
+                if loop_mode != LoopMode::NoLoop {
                     zone_builder.start_loop_pos(Some(sample.start_loop - sample.start));
                     zone_builder.end_loop_pos(Some(sample.end_loop - sample.start));
                 }

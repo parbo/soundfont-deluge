@@ -810,48 +810,51 @@ impl SoundFont {
             })
             .collect()
     }
-
-    pub fn save_samples(&self, folder: &Path) -> std::io::Result<()> {
-        info!("saving samples to {}", folder.display());
-        fs::create_dir_all(folder)?;
-        info!("created folder!");
-        for ix in 0..self.samples.len() {
-            let sample = &self.samples[ix];
-            match sample.sample_type {
-                1 | 2 | 4 => {
-                    // TODO: maybe combine 2 and 4 to stereo sample?
-                    info!(
-                        "saving sample {}, sample rate: {}",
-                        sample.name, sample.sample_rate
-                    );
-                    let h = wav::Header::new(1, sample.sample_rate);
-                    let s = wav::SampleChunk::new(
+    pub fn save_sample(
+        &self,
+        sample: &Sample,
+        loop_mode: LoopMode,
+        path: &Path,
+    ) -> std::io::Result<()> {
+        info!("saving sample {} to {}", sample.name, path.display());
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        match sample.sample_type {
+            1 | 2 | 4 => {
+                // TODO: maybe combine 2 and 4 to stereo sample?
+                info!(
+                    "saving sample {}, sample rate: {}",
+                    sample.name, sample.sample_rate
+                );
+                let h = wav::Header::new(1, sample.sample_rate);
+                let s = if loop_mode != LoopMode::NoLoop {
+                    println!("sample {} has loop {:?}", sample.name, loop_mode);
+                    Some(wav::SampleChunk::new(
                         sample.sample_rate,
                         sample.start_loop - sample.start,
                         sample.end_loop - sample.start,
-                    );
-                    let name = format!("{} - {}.wav", ix, SoundFont::safe_name(&sample.name));
-                    let file_path = folder.join(name);
-                    info!("file path: {}", file_path.display());
-                    let mut out_file = fs::File::create(file_path)?;
-                    info!("created file!");
-                    let mut out = vec![];
-                    out.reserve(self.sample_data.len() / 2);
-                    let mut ix = sample.start * 2;
-                    while ix +2 <= sample.end * 2 {
-                        let low = self.sample_data[ix as usize];
-                        let high = self.sample_data[(ix + 1) as usize];
-                        out.push(i16::from_le_bytes([low, high]));
-                        ix += 2;
-                    }
-                    wav::write(h, &out, &s, &mut out_file)?;
+                    ))
+                } else {
+                    None
+                };
+                let mut out_file = fs::File::create(path)?;
+                let mut out = vec![];
+                out.reserve(self.sample_data.len() / 2);
+                let mut ix = sample.start * 2;
+                while ix + 2 <= sample.end * 2 {
+                    let low = self.sample_data[ix as usize];
+                    let high = self.sample_data[(ix + 1) as usize];
+                    out.push(i16::from_le_bytes([low, high]));
+                    ix += 2;
                 }
-                _ => {
-                    warn!(
-                        "Unsupported sample type: {}, name: {}",
-                        sample.sample_type, sample.name
-                    );
-                }
+                wav::write(h, &out, s, &mut out_file)?;
+            }
+            _ => {
+                warn!(
+                    "Unsupported sample type: {}, name: {}",
+                    sample.sample_type, sample.name
+                );
             }
         }
         Ok(())
