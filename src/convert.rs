@@ -48,28 +48,30 @@ pub fn soundfont_to_deluge(
             let gen = &sf.pgens[gen_ix];
             if let Generator::Instrument(index) = gen {
                 let mut gens = get_instrument_zones(sf, *index as usize);
-		// Sort on key range
-		gens.sort_by(|a, b| {
-		    let a_r = if let Some(Generator::KeyRange(low, high)) =
-			get_zone_generator!(a, Generator::KeyRange(_, _)) {
-			    (low, high)
-			} else {
-			    (0, 127)
-			};
-		    let b_r = if let Some(Generator::KeyRange(low, high)) =
-			get_zone_generator!(b, Generator::KeyRange(_, _)) {
-			    (low, high)
-			} else {
-			    (0, 127)
-			};
-		    a_r.cmp(&b_r)
-		});
+                // Sort on key range
+                gens.sort_by(|a, b| {
+                    let a_r = if let Some(Generator::KeyRange(low, high)) =
+                        get_zone_generator!(a, Generator::KeyRange(_, _))
+                    {
+                        (low, high)
+                    } else {
+                        (0, 127)
+                    };
+                    let b_r = if let Some(Generator::KeyRange(low, high)) =
+                        get_zone_generator!(b, Generator::KeyRange(_, _))
+                    {
+                        (low, high)
+                    } else {
+                        (0, 127)
+                    };
+                    a_r.cmp(&b_r)
+                });
                 instruments.push(gens);
             }
         }
     }
     for inst in &instruments {
-	info!("instrument: {:?}", inst);
+        info!("instrument: {:?}", inst);
     }
     // Map instruments to oscs
     let mut oscs = vec![];
