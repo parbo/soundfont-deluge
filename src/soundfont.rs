@@ -30,6 +30,24 @@ pub struct Sample {
     pub sample_type: u16,
 }
 
+impl Sample {
+    /// Returns a scaling factor for sample rate that brings the sample into the supported sample rate zone (400-50000)
+    pub fn scale(&self) -> (u32, u32) {
+        let mut numerator = 1;
+        let mut denominator = 1;
+        loop {
+            if numerator * self.sample_rate / denominator < 400 {
+                numerator += 1;
+            } else if numerator * self.sample_rate / denominator > 50000 {
+                denominator += 1;
+            } else {
+                break;
+            }
+        }
+        (numerator, denominator)
+    }
+}
+
 #[derive(BinRead, Debug)]
 pub struct Preset {
     #[br(map = |x: [u8;20]| make_string(&x))]
@@ -827,11 +845,13 @@ impl SoundFont {
                     "saving sample {}, sample rate: {}",
                     sample.name, sample.sample_rate
                 );
-                let h = wav::Header::new(1, sample.sample_rate);
+                let (n, d) = sample.scale();
+                let sample_rate = n * sample.sample_rate / d;
+                let h = wav::Header::new(1, sample_rate);
                 let s = if loop_mode != LoopMode::NoLoop {
                     println!("sample {} has loop {:?}", sample.name, loop_mode);
                     Some(wav::SampleChunk::new(
-                        sample.sample_rate,
+                        sample_rate,
                         sample.start_loop - sample.start,
                         sample.end_loop - sample.start,
                     ))

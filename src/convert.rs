@@ -107,11 +107,15 @@ pub fn soundfont_to_deluge(
                     .unwrap_or(Generator::KeyRange(0, 127))
             {
                 let mut sample_name = None;
+                let mut original_key = None;
+                let mut scale = (1, 1);
                 if let Some(Generator::SampleID(sample_id)) =
                     get_zone_generator!(zone, Generator::SampleID(_))
                 {
                     let sample = &sf.samples[sample_id as usize];
                     sample_name = Some(sample.name.clone());
+                    original_key = Some(sample.original_pitch);
+                    scale = sample.scale();
                 }
                 if sample_name.is_none() {
                     continue;
@@ -135,7 +139,14 @@ pub fn soundfont_to_deluge(
                 if root_note.is_none() {
                     continue;
                 }
-                let root_note = root_note.unwrap();
+                let mut root_note = root_note.unwrap();
+                // Scale the root note according to the adjusted sample rate
+                for _ in 0..scale.0 {
+                    root_note -= 12;
+                }
+                for _ in 0..scale.1 {
+                    root_note += 12;
+                }
                 if osc.is_empty() {
                     osc.push((
                         instrument_ix,
