@@ -5,13 +5,11 @@ extern crate yaserde_derive;
 #[macro_use]
 extern crate lazy_static;
 
-pub mod akp;
 pub mod convert;
 pub mod deluge;
 pub mod soundfont;
 pub mod wav;
 
-use akp::AkaiProgram;
 use clap::{App, Arg};
 use soundfont::SoundFont;
 use std::fs;
@@ -74,12 +72,6 @@ fn main() {
         if matches.is_present("DUMP") {
             println!("dumping");
             println!("{:?}", synth);
-        }
-    } else if filename.to_lowercase().ends_with(".akp") {
-        let ap = AkaiProgram::parse_akai_program(&mut file);
-        if matches.is_present("DUMP") {
-            println!("dumping");
-            ap.dump();
         }
     } else {
         let sf = SoundFont::parse_soundfont(&mut file);
