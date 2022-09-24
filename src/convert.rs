@@ -129,10 +129,13 @@ pub fn soundfont_to_deluge(
                     get_zone_generator!(zone, Generator::OverridingRootKey(_))
                 {
                     root_note = Some(root);
+                } else if let Some(original_key) = original_key {
+                    root_note = Some(original_key as i16);
                 }
                 if root_note.is_none() {
                     continue;
                 }
+                let root_note = root_note.unwrap();
                 if osc.is_empty() {
                     osc.push((
                         instrument_ix,
@@ -211,20 +214,16 @@ pub fn soundfont_to_deluge(
         }
         let single_sample = osc.len() == 1;
         let mut sample_ranges = vec![];
-        for (ix, (i, o, _low, high, _sample_name, _root, loop_mode)) in osc.iter().enumerate() {
+        for (ix, (i, o, _low, high, _sample_name, root, loop_mode)) in osc.iter().enumerate() {
             let mut sample_range_builder = deluge::SampleRangeBuilder::default();
             // The last sample must _not_ have range_top_note!
             if ix != osc.len() - 1 {
                 sample_range_builder.range_top_note(Some(*high as i32));
             }
-            if let Some(Generator::OverridingRootKey(root)) =
-                get_zone_generator!(&instruments[*i][*o], Generator::OverridingRootKey(_))
-            {
-                if single_sample {
-                    osc_builder.transpose(Some((60 - root).into()));
-                } else {
-                    sample_range_builder.transpose(Some((60 - root).into()));
-                }
+            if single_sample {
+                osc_builder.transpose(Some((60 - root).into()));
+            } else {
+                sample_range_builder.transpose(Some((60 - root).into()));
             }
             if let Some(Generator::FineTune(cents)) =
                 get_zone_generator!(&instruments[*i][*o], Generator::FineTune(_))
